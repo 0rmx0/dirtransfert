@@ -10,5 +10,5 @@ lto = true
 strip = true
 
 [dependencies]
-eframe = "0.36.2"
+eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "links", "wayland", "x11", "glow"] }
 rfd = { version = "0.17.2", features = ["default"] }
