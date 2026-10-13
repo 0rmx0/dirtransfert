@@ -10,6 +10,51 @@ enum Event {
     Done { ok: bool, files_ok: usize, files_total: usize },
 }
 
+// Charte graphique R_M_X — tokens v1.1
+const NEANT: egui::Color32 = egui::Color32::from_rgb(0x11, 0x11, 0x11); // fond
+const SURFACE: egui::Color32 = egui::Color32::from_rgb(0x22, 0x22, 0x22); // panneaux
+const ENCRE: egui::Color32 = egui::Color32::from_rgb(0xFF, 0xFF, 0xFF); // texte fort
+const BRUME: egui::Color32 = egui::Color32::from_rgb(0xCC, 0xCC, 0xCC); // texte secondaire
+const SPECTRE: egui::Color32 = egui::Color32::from_rgb(0x00, 0xFF, 0xFF); // cyan : interactif, focus
+const ETRANGE: egui::Color32 = egui::Color32::from_rgb(0xFF, 0x00, 0xFF); // magenta : emphase
+const TERMINAL: egui::Color32 = egui::Color32::from_rgb(0x00, 0xFF, 0x7F); // vert : machine
+const OMBRE: egui::Color32 = egui::Color32::from_rgb(0x55, 0x55, 0x55); // discret
+
+const RMX_ROUNDING: egui::CornerRadius = egui::CornerRadius::same(10);
+const RMX_STROKE: f32 = 1.0;
+
+fn rmx_visuals() -> egui::Visuals {
+    let mut v = egui::Visuals::dark();
+    v.panel_fill = NEANT;
+    v.window_fill = SURFACE;
+    v.extreme_bg_color = egui::Color32::BLACK;
+    v.faint_bg_color = egui::Color32::from_rgb(0x18, 0x18, 0x18);
+    v.hyperlink_color = SPECTRE;
+    v.override_text_color = Some(BRUME);
+    v.widgets.noninteractive.bg_fill = SURFACE;
+    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, BRUME);
+    v.widgets.inactive.bg_fill = egui::Color32::TRANSPARENT;
+    v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, BRUME);
+    v.widgets.inactive.bg_stroke = egui::Stroke::new(RMX_STROKE, SPECTRE);
+    v.widgets.inactive.corner_radius = RMX_ROUNDING;
+    v.widgets.hovered.bg_fill = egui::Color32::TRANSPARENT;
+    v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, SPECTRE);
+    v.widgets.hovered.bg_stroke = egui::Stroke::new(RMX_STROKE, SPECTRE);
+    v.widgets.hovered.corner_radius = RMX_ROUNDING;
+    v.widgets.active.bg_fill = egui::Color32::TRANSPARENT;
+    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, SPECTRE);
+    v.widgets.active.bg_stroke = egui::Stroke::new(RMX_STROKE, ETRANGE);
+    v.widgets.active.corner_radius = RMX_ROUNDING;
+    v.widgets.open.bg_fill = SURFACE;
+    v.widgets.open.fg_stroke = egui::Stroke::new(1.0, ENCRE);
+    v.widgets.open.corner_radius = RMX_ROUNDING;
+    v.selection.bg_fill = egui::Color32::from_rgb(0x00, 0x33, 0x33);
+    v.selection.stroke = egui::Stroke::new(1.0, SPECTRE);
+    v.warn_fg_color = ETRANGE;
+    v.error_fg_color = egui::Color32::from_rgb(0xFF, 0x6A, 0x4D);
+    v
+}
+
 struct GuiReporter {
     tx: Sender<Event>,
 }
@@ -153,8 +198,8 @@ impl eframe::App for App {
             ui.separator();
 
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.mode, Mode::Send, "Envoyer");
-                ui.selectable_value(&mut self.mode, Mode::Receive, "Recevoir");
+                let _ = ui.selectable_value(&mut self.mode, Mode::Send, "Envoyer");
+                let _ = ui.selectable_value(&mut self.mode, Mode::Receive, "Recevoir");
             });
             ui.separator();
 
@@ -198,19 +243,20 @@ impl eframe::App for App {
                 Mode::Send => !self.dir.trim().is_empty() && transfer::parse_endpoint(&self.addr).is_some(),
                 Mode::Receive => !self.out_dir.trim().is_empty() && transfer::parse_endpoint(&self.addr).is_some(),
             };
-            if ui.add_enabled(can_start, egui::Button::new(if self.mode == Mode::Send { "Demarrer l'envoi" } else { "Demarrer la reception" })).clicked() {
+            let start_label = if self.mode == Mode::Send { "Demarrer l'envoi" } else { "Demarrer la reception" };
+            if ui.add_enabled(can_start, egui::Button::new(egui::RichText::new(start_label).color(SPECTRE))).clicked() {
                 self.start_transfer();
             }
 
             if let Some((ok, n, tot)) = self.finished {
                 if ok {
-                    ui.colored_label(egui::Color32::from_rgb(32, 160, 32), format!("Transfert termine : {}/{} fichiers valides, checksums verifies", n, tot));
+                    ui.colored_label(TERMINAL, format!("Transfert termine : {}/{} fichiers valides, checksums verifies", n, tot));
                 } else {
-                    ui.colored_label(egui::Color32::from_rgb(200, 40, 40), "Transfert incomplet — voir le journal ci-dessous, relancez pour reprendre");
+                    ui.colored_label(ETRANGE, "Transfert incomplet — voir le journal ci-dessous, relancez pour reprendre");
                 }
             }
             if let Some(e) = &self.error {
-                ui.colored_label(egui::Color32::from_rgb(200, 40, 40), e);
+                ui.colored_label(ETRANGE, e);
             }
 
             if self.total > 0 || self.running {
@@ -225,8 +271,22 @@ impl eframe::App for App {
 
             ui.separator();
             ui.label("Journal :");
-            egui::ScrollArea::vertical().auto_shrink([false, true]).show(ui, |ui| {
-                ui.add(egui::TextEdit::multiline(&mut self.log).desired_width(f32::INFINITY).desired_rows(12).interactive(false));
+            egui::Frame::new().fill(egui::Color32::BLACK).corner_radius(RMX_ROUNDING).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
+                egui::ScrollArea::vertical().auto_shrink([false, true]).show(ui, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.log)
+                            .font(egui::TextStyle::Monospace)
+                            .text_color(TERMINAL)
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(12)
+                            .interactive(false),
+                    );
+                });
+            });
+
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("cGFzIGRlIGRpZXV4LCBwYXMgZGUgbWFpdHJlcyAtIDBybXgw").monospace().color(OMBRE));
             });
         });
     }
@@ -234,10 +294,13 @@ impl eframe::App for App {
 
 pub fn launch() -> Result<(), String> {
     let native = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([640.0, 520.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([640.0, 560.0]),
         ..Default::default()
     };
-    eframe::run_native("dirtransfer", native, Box::new(|_cc| Ok(Box::new(App::default()))))
+    eframe::run_native("dirtransfer", native, Box::new(|cc| {
+        cc.egui_ctx.set_visuals(rmx_visuals());
+        Ok(Box::new(App::default()))
+    }))
         .map_err(|e| format!("lancement de la fenetre : {}", e))
 }
 
