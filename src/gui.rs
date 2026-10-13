@@ -1,8 +1,10 @@
 use crate::transfer::{self, Opts, Reporter};
 use eframe::egui;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 enum Event {
     Log(String),
@@ -95,6 +97,7 @@ pub struct App {
     pct: u64,
     log: String,
     rx: Option<Receiver<Event>>,
+    pick_rx: Option<Receiver<Option<PathBuf>>>,
 }
 
 impl Default for App {
@@ -116,11 +119,23 @@ impl Default for App {
             pct: 0,
             log: String::new(),
             rx: None,
+            pick_rx: None,
         }
     }
 }
 
 impl App {
+    fn browse(&mut self) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.pick_rx = Some(rx);
+        std::thread::spawn(move || {
+            let picked = block_on(async {
+                rfd::AsyncFileDialog::new().pick_folder().await.map(|h| h.path().to_path_buf())
+            });
+            let _ = tx.send(picked);
+        });
+    }
+
     fn start_transfer(&mut self) {
         let (tx, rx) = std::sync::mpsc::channel();
         self.rx = Some(rx);
@@ -189,6 +204,22 @@ impl eframe::App for App {
                 }
             }
         }
+        if let Some(rx) = &self.pick_rx {
+            match rx.try_recv() {
+                Ok(Some(p)) => {
+                    match self.mode {
+                        Mode::Send => self.dir = p.display().to_string(),
+                        Mode::Receive => self.out_dir = p.display().to_string(),
+                    }
+                    self.pick_rx = None;
+                }
+                Ok(None) => self.pick_rx = None,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.pick_rx = None,
+            }
+        }
         if self.running {
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
         }
@@ -208,10 +239,8 @@ impl eframe::App for App {
                 ui.horizontal(|ui| {
                     ui.label("Repertoire a envoyer :");
                     ui.add_enabled(enabled, egui::TextEdit::singleline(&mut self.dir).desired_width(320.0));
-                    if ui.add_enabled(enabled, egui::Button::new("Parcourir...")).clicked() {
-                        if let Some(p) = rfd::FileDialog::new().pick_folder() {
-                            self.dir = p.display().to_string();
-                        }
+                    if ui.add_enabled(enabled && self.pick_rx.is_none(), egui::Button::new("Parcourir...")).clicked() {
+                        self.browse();
                     }
                 });
                 ui.horizontal(|ui| {
@@ -222,10 +251,8 @@ impl eframe::App for App {
                 ui.horizontal(|ui| {
                     ui.label("Dossier de reception :");
                     ui.add_enabled(enabled, egui::TextEdit::singleline(&mut self.out_dir).desired_width(320.0));
-                    if ui.add_enabled(enabled, egui::Button::new("Parcourir...")).clicked() {
-                        if let Some(p) = rfd::FileDialog::new().pick_folder() {
-                            self.out_dir = p.display().to_string();
-                        }
+                    if ui.add_enabled(enabled && self.pick_rx.is_none(), egui::Button::new("Parcourir...")).clicked() {
+                        self.browse();
                     }
                 });
                 ui.horizontal(|ui| {
@@ -289,6 +316,22 @@ impl eframe::App for App {
                 ui.label(egui::RichText::new("cGFzIGRlIGRpZXV4LCBwYXMgZGUgbWFpdHJlcyAtIDBybXgw").monospace().color(OMBRE));
             });
         });
+    }
+}
+
+fn block_on<F: Future>(fut: F) -> F::Output {
+    struct NoopWake;
+    impl std::task::Wake for NoopWake {
+        fn wake(self: Arc<Self>) {}
+    }
+    let waker = std::task::Waker::from(Arc::new(NoopWake));
+    let mut cx = Context::from_waker(&waker);
+    let mut fut = std::pin::pin!(fut);
+    loop {
+        match fut.as_mut().poll(&mut cx) {
+            Poll::Ready(v) => return v,
+            Poll::Pending => std::thread::sleep(std::time::Duration::from_millis(20)),
+        }
     }
 }
 
