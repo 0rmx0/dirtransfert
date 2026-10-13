@@ -337,6 +337,7 @@ fn block_on<F: Future>(fut: F) -> F::Output {
 
 pub fn launch() -> Result<(), String> {
     let native = eframe::NativeOptions {
+        renderer: eframe::Renderer::Glow,
         viewport: egui::ViewportBuilder::default().with_inner_size([640.0, 560.0]),
         ..Default::default()
     };
