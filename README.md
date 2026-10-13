@@ -22,10 +22,23 @@ Le binaire est `target\release\dirtransfer.exe`. C'est un fichier autonome, aucu
 
 ## Utilisation
 
+### Interface graphique (par défaut)
+
+Double-cliquez sur `dirtransfer.exe` (ou lancez-le sans argument) : une fenêtre s'ouvre avec :
+- le choix du mode **Envoyer / Recevoir** ;
+- la sélection du répertoire via un sélecteur de dossiers natif ;
+- l'adresse et le port de destination ;
+- les options UPnP / pare-feu en cases à cocher (côté réception) ;
+- une barre de progression (octets, Mo/s, %) et un journal en direct.
+
+Pour l'ouverture du pare-feu, lancez l'exe **en tant qu'administrateur** (clic droit → « Exécuter en tant qu'administrateur ») ; sinon l'outil affiche un avertissement dans le journal et continue.
+
+### Ligne de commande (`--cli`)
+
 **1. Sur le PC récepteur**, dans une console **ouvertes en tant qu'administrateur** (clic droit → « Exécuter en tant qu'administrateur ») :
 
 ```cmd
-dirtransfer.exe receive 0.0.0.0:47500 D:\reception --upnp --open-fw --close-fw
+dirtransfer.exe --cli receive 0.0.0.0:47500 D:\reception --upnp --open-fw --close-fw
 ```
 
 L'outil ouvre alors automatiquement :
@@ -75,6 +88,8 @@ Si une étape échoue (box sans UPnP, console non administrateur), l'outil l'aff
 - `src/sha256.rs` — implémentation SHA-256 en pur Rust (testée contre les vecteurs NIST).
 - `src/upnp.rs` — client UPnP-IGD en pur Rust : découverte SSDP, description XML, appels SOAP `AddPortMapping`/`GetExternalIPAddress`/`DeletePortMapping`.
 - `src/firewall.rs` — règles `netsh advfirewall` pour le pare-feu Windows (règle entrante `dirtransfer`).
+- `src/transfer.rs` — cœur du transfert (send/receive) avec callbacks de progression, partagé par le CLI et la GUI.
+- `src/gui.rs` — interface graphique egui/eframe, transfert dans un thread dédié.
 
 ## Tests
 
