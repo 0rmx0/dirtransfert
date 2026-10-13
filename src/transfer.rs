@@ -86,6 +86,7 @@ pub struct Opts {
 
 pub trait Reporter: Send + Sync {
     fn log(&self, msg: String);
+    fn scan(&self, _done: usize, _total: usize, _current: &str) {}
     fn progress(&self, sent: u64, total: u64, speed_mbps: f64, pct: u64);
     fn done(&self, ok: bool, files_ok: usize, files_total: usize);
 }
@@ -93,6 +94,7 @@ pub trait Reporter: Send + Sync {
 pub struct NullReporter;
 impl Reporter for NullReporter {
     fn log(&self, _msg: String) {}
+    fn scan(&self, _d: usize, _t: usize, _c: &str) {}
     fn progress(&self, _s: u64, _t: u64, _sp: f64, _p: u64) {}
     fn done(&self, _ok: bool, _n: usize, _tot: usize) {}
 }
@@ -232,8 +234,21 @@ pub fn send(dir: &Path, addr: &str, code: &str, rep: &dyn Reporter) -> Result<()
     }
     let root_name = dir.file_name().unwrap().to_string_lossy().to_string();
     rep.log(format!("analyse de {} ...", dir.display()));
-    let files = scan_dir(dir)?;
+    let last_report = Arc::new(std::sync::Mutex::new((0usize, std::time::Instant::now())));
+    let scan_rep = rep;
+    let scan_progress = move |done: usize, total: usize, current: &str| {
+        let Ok(mut last) = last_report.lock() else { return };
+        let advance = done > last.0;
+        let elapsed = last.1.elapsed().as_millis() as usize;
+        if done == total || (advance && elapsed >= 200) {
+            *last = (done, std::time::Instant::now());
+            drop(last);
+            scan_rep.scan(done, total, current);
+        }
+    };
+    let files = scan_dir(dir, scan_progress)?;
     let total: u64 = files.iter().map(|f| f.size).sum();
+    rep.scan(files.len(), files.len(), "analyse terminee");
     rep.log(format!("{} fichiers, {} a transferer vers {}", files.len(), human(total), addr));
 
     let sock = TcpStream::connect(addr).map_err(|e| format!("connexion a {} : {}", addr, e))?;
