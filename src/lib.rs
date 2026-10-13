@@ -1,6 +1,7 @@
 pub mod cli;
 pub mod firewall;
 pub mod gui;
+pub mod icon;
 pub mod protocol;
 pub mod sha256;
 pub mod transfer;

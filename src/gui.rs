@@ -1,3 +1,4 @@
+use crate::icon::{ICON_H, ICON_RGBA, ICON_W};
 use crate::transfer::{self, Opts, Reporter};
 use eframe::egui;
 use std::future::Future;
@@ -336,9 +337,16 @@ fn block_on<F: Future>(fut: F) -> F::Output {
 }
 
 pub fn launch() -> Result<(), String> {
+    let icon = egui::IconData {
+        rgba: ICON_RGBA.to_vec(),
+        width: ICON_W,
+        height: ICON_H,
+    };
     let native = eframe::NativeOptions {
         renderer: eframe::Renderer::Glow,
-        viewport: egui::ViewportBuilder::default().with_inner_size([640.0, 560.0]),
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([640.0, 560.0])
+            .with_icon(std::sync::Arc::new(icon)),
         ..Default::default()
     };
     eframe::run_native("dirtransfer", native, Box::new(|cc| {
