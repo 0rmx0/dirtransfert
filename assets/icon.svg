@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- fond -->
+  <rect width="512" height="512" rx="80" fill="#111111"/>
+
+  <!-- répertoques : disque / dossier stylisé -->
+  <g filter="url(#glow)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- dossier -->
+    <path d="M136 196 h84 l28 32 h128 a20 20 0 0 1 20 20 v132 a20 20 0 0 1 -20 20 H156 a20 20 0 0 1 -20 -20 V216 a20 20 0 0 1 20 -20 z"
+          stroke="#00FFFF" stroke-width="14"/>
+    <!-- flux de transfert -->
+    <path d="M256 240 v-84" stroke="#00FF7F" stroke-width="10"/>
+    <path d="M232 176 l24 -28 24 28" stroke="#00FF7F" stroke-width="10" fill="none"/>
+    <path d="M256 340 v-84" stroke="#00FF7F" stroke-width="10" opacity="0.55"/>
+    <!-- nœuds réseau -->
+    <circle cx="256" cy="148" r="10" fill="#FF00FF" stroke="none"/>
+    <circle cx="256" cy="256" r="10" fill="#FF00FF" stroke="none"/>
+    <circle cx="256" cy="364" r="10" fill="#FF00FF" stroke="none"/>
+  </g>
+
+  <!-- couche cachée : UMVTUFRTRCBESB0Wk9DT1JQ== -->
+  <text x="256" y="486" font-family="Courier New, monospace" font-size="12"
+        fill="#222222" text-anchor="middle">Uk1YX0RJUkVOVFJBTlNFUl9OT0RF</text>
+</svg>
