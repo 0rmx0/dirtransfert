@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=DirTransfert
+GenericName=Directory Transfer
+Comment=Transfert de répertoires via TCP chiffré (ChaCha20-Poly1305, code de jumelage)
+Exec=dirtransfert
+Icon=dirtransfert
+Terminal=false
+Categories=Network;FileTransfer;Utility;
+Keywords=transfer;tcp;encrypted;directory;repertoire;
+StartupWMClass=DirTransfert
