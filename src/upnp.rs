@@ -184,6 +184,18 @@ fn soap_call(
     http_raw(host, port, &req)
 }
 
+
+pub fn local_ip() -> String {
+    let s = match UdpSocket::bind("0.0.0.0:0") {
+        Ok(s) => s,
+        Err(_) => return String::new(),
+    };
+    if s.connect("8.8.8.8:80").is_err() {
+        return String::new();
+    }
+    s.local_addr().map(|a| a.ip().to_string()).unwrap_or_default()
+}
+
 pub struct Mapping {
     pub external_ip: String,
     pub external_port: u16,
@@ -219,6 +231,31 @@ fn try_add_on_device(location: &str, port: u16) -> Result<Mapping, String> {
         }
     }
     Err("la box a refuse l'ouverture du port".into())
+}
+
+
+pub fn get_external_ip() -> Result<String, String> {
+    let locations = ssdp_discover(Duration::from_secs(2));
+    if locations.is_empty() {
+        return Err("aucune box UPnP detectee".into());
+    }
+    for loc in &locations {
+        let desc = match http_get(loc) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        for (host, cport, path, st) in parse_services(&desc, loc) {
+            let body = "<NewExternalIPAddress></NewExternalIPAddress>";
+            if let Ok(resp) = soap_call(&host, cport, &path, &st, "GetExternalIPAddress", body) {
+                if let Some(ip) = find_tag(&resp, "NewExternalIPAddress") {
+                    if !ip.is_empty() {
+                        return Ok(ip);
+                    }
+                }
+            }
+        }
+    }
+    Err("IP publique introuvable via la box".into())
 }
 
 pub fn add_port_mapping(port: u16) -> Result<Mapping, String> {

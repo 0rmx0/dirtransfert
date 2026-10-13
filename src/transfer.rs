@@ -118,6 +118,26 @@ pub fn receive(addr: &str, out_dir: &Path, opts: &Opts, rep: &dyn Reporter) -> R
             Err(e) => rep.log(format!("UPnP : {} (configurez la redirection manuellement sur la box)", e)),
         }
     }
+    let ip_locale = upnp::local_ip();
+    if !ip_locale.is_empty() {
+        rep.log(format!("IP locale de ce PC : {}", ip_locale));
+    }
+    match upnp::get_external_ip() {
+        Ok(ip_pub) => {
+            rep.log(format!("IP publique de la box : {}", ip_pub));
+            rep.log(format!("sur le PC emetteur (meme reseau), renseignez : {}:{}", ip_locale, port));
+            rep.log(format!("sur le PC emetteur (via Internet), renseignez : {}:{}", ip_pub, port));
+            if ip_pub.starts_with("100.") && !ip_pub.starts_with("100.128.") {
+                rep.log("attention : IP en plage 100.64-127.x.x = CGNAT operateur, l'UPnP ne suffira pas, utilisez un VPN (Tailscale/WireGuard)".to_string());
+            }
+        }
+        Err(e) => {
+            if !ip_locale.is_empty() {
+                rep.log(format!("sur le PC emetteur (meme reseau), renseignez : {}:{}", ip_locale, port));
+            }
+            rep.log(format!("IP publique : {} (via Internet, trouvez l'IP de la box sur son interface d'administration)", e));
+        }
+    }
     let listener = TcpListener::bind(addr).map_err(|e| format!("liaison de {} : {}", addr, e))?;
     rep.log(format!("en ecoute sur {}", addr));
     let (mut stream, peer) = listener.accept().map_err(|e| format!("acceptation : {}", e))?;
