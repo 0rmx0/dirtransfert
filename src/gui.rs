@@ -313,7 +313,7 @@ impl eframe::App for App {
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new("cGFzIGRlIGRpZXV4LCBwYXMgZGUgbWFpdHJlcyAtIDBybXgw").monospace().color(OMBRE));
+                ui.label(egui::RichText::new("IkwnaW5mb3JtYXRpb24sIGMnZXN0IGxlIHBvdXZvaXIuIE1haXMgY29tbWUgdG91dCBwb3V2b2lyLCBpbCB5IGEgY2V1eCBxdWkgdmV1bGVudCBsZSBnYXJkZXIgcG91ciBldXguIiAtIEFhcm9uIFN3YXJ0eg==").monospace().color(OMBRE));
             });
         });
     }
