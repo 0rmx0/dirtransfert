@@ -256,7 +256,7 @@ impl eframe::App for App {
         }
 
         egui::CentralPanel::default().show(ui, |ui| {
-            ui.heading("dirtransfer");
+            ui.heading("DirTransfert");
             if ui.button(egui::RichText::new("À propos").color(SPECTRE)).clicked() {
                 self.show_about = true;
             }
@@ -383,7 +383,7 @@ impl eframe::App for App {
                 .collapsible(false)
                 .default_width(460.0)
                 .show(ui.ctx(), |ui| {
-                    ui.heading("dirtransfer 0.1.0");
+                    ui.heading("DirTransfert 0.1.0");
                     ui.separator();
                     ui.label(egui::RichText::new("Outil de transfert de répertoire décentralisé — TCP chiffré (ChaCha20-Poly1305), code de jumelage, vérification SHA-256 et reprise.").color(BRUME));
                     ui.add_space(8.0);
@@ -450,7 +450,7 @@ pub fn launch() -> Result<(), String> {
             .with_icon(std::sync::Arc::new(icon)),
         ..Default::default()
     };
-    eframe::run_native("dirtransfer", native, Box::new(|cc| {
+    eframe::run_native("DirTransfert", native, Box::new(|cc| {
         cc.egui_ctx.set_visuals(rmx_visuals());
         Ok(Box::new(App::default()))
     }))

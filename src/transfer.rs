@@ -115,7 +115,7 @@ pub fn receive(addr: &str, out_dir: &Path, code: &str, opts: &Opts, rep: &dyn Re
             Ok(m) => {
                 rep.log(format!("redirection UPnP active : port TCP {} -> ce PC", m.external_port));
                 let ext = if m.external_ip.is_empty() { String::from("<IP_publique_de_la_box>") } else { m.external_ip.clone() };
-                rep.log(format!("sur l'emetteur, lancez : dirtransfer send <repertoire> {}:{}", ext, m.external_port));
+                rep.log(format!("sur l'emetteur, lancez : DirTransfert send <repertoire> {}:{}", ext, m.external_port));
                 upnp_map = Some(m);
             }
             Err(e) => rep.log(format!("UPnP : {} (configurez la redirection manuellement sur la box)", e)),
