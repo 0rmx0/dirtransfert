@@ -109,6 +109,7 @@ pub struct App {
     log: String,
     rx: Option<Receiver<Event>>,
     pick_rx: Option<Receiver<Option<PathBuf>>>,
+    show_about: bool,
 }
 
 impl Default for App {
@@ -137,6 +138,7 @@ impl Default for App {
             log: String::new(),
             rx: None,
             pick_rx: None,
+            show_about: false,
         }
     }
 }
@@ -255,6 +257,9 @@ impl eframe::App for App {
 
         egui::CentralPanel::default().show(ui, |ui| {
             ui.heading("dirtransfer");
+            if ui.button(egui::RichText::new("À propos").color(SPECTRE)).clicked() {
+                self.show_about = true;
+            }
             ui.separator();
 
             ui.horizontal(|ui| {
@@ -369,6 +374,50 @@ impl eframe::App for App {
                 ui.label(egui::RichText::new("IkwnaW5mb3JtYXRpb24sIGMnZXN0IGxlIHBvdXZvaXIuIE1haXMgY29tbWUgdG91dCBwb3V2b2lyLCBpbCB5IGEgY2V1eCBxdWkgdmV1bGVudCBsZSBnYXJkZXIgcG91ciBldXguIiAtIEFhcm9uIFN3YXJ0eg==").monospace().color(OMBRE));
             });
         });
+
+        if self.show_about {
+            let mut close = false;
+            egui::Window::new("À propos")
+                .open(&mut self.show_about)
+                .resizable(false)
+                .collapsible(false)
+                .default_width(460.0)
+                .show(ui.ctx(), |ui| {
+                    ui.heading("dirtransfer 0.1.0");
+                    ui.separator();
+                    ui.label(egui::RichText::new("Outil de transfert de répertoire décentralisé — TCP chiffré (ChaCha20-Poly1305), code de jumelage, vérification SHA-256 et reprise.").color(BRUME));
+                    ui.add_space(8.0);
+
+                    ui.label(egui::RichText::new("Licence").color(SPECTRE));
+                    ui.label("Logiciel libre sous licence MIT.");
+                    ui.label(egui::RichText::new("Copyright (c) 2026 R_M_X").color(ENCRE));
+                    ui.add_space(6.0);
+                    ui.label(egui::RichText::new(
+                        "Autorisation est accordée, à titre gratuit, à toute personne obtenant une copie de ce logiciel et des fichiers de documentation associés (le \"logiciel\"), de commercialiser le Software sans restriction, y compris sans limitation les droits d'utiliser, copier, modifier, fusionner, publier, distribuer, sous-licencier et/ou vendre des copies du Software, et à permettre aux personnes auxquelles le Software est fourni de le faire, sous réserve des conditions suivantes :"
+                    ).monospace().color(BRUME));
+                    ui.label(egui::RichText::new(
+                        "Le texte de licence ci-dessus et l'avertissement relatif aux droits d'auteur doivent être reproduits dans toutes les copies ou parties substantielles du Software."
+                    ).monospace().color(BRUME));
+                    ui.add_space(8.0);
+
+                    ui.label(egui::RichText::new("Mentions légales").color(SPECTRE));
+                    ui.label(egui::RichText::new("LE LOGICIEL EST FOURNI \"TEL QUEL\", SANS AUCUNE GARANTIE D'AUCUNE SORTE, EXPLICITE OU IMPLICITE, NOTAMMENT LES GARANTIES DE COMMERCIALISATION, D'ADÉQUATION À UN USAGE PARTICULIER ET DE NON-CONTREFAÇON. EN AUCUN CAS LES AUTEURS OU DÉTENTEURS DE DROITS D'AUTEUR NE SERONT RESPONSABLES DE TOUTE RÉCLAMATION, DOMMAGE OU AUTRE RESPONSABILITÉ, QUE CE SOIT DANS UNE ACTION CONTRACTUELLE, DÉLICTUELLE OU AUTRE, PROVENANT DE, HORS OU EN RELATION AVEC LE LOGICIEL OU SON UTILISATION OU AVEC D'AUTRES MOUVEMENTS DU LOGICIEL.").monospace().color(BRUME));
+                    ui.add_space(8.0);
+
+                    ui.label(egui::RichText::new("Dépendances").color(SPECTRE));
+                    ui.label("eframe/egui, rfd, chacha20poly1305, argon2, rand, sha2 — sous licences MIT et/ou Apache-2.0 (projets RustCrypto, egui et al.).");
+                    ui.add_space(8.0);
+
+                    ui.label(egui::RichText::new("Crédits").color(SPECTRE));
+                    ui.label("Charte graphique et icône R_M_X. Dépôt : https://github.com/0rmx0/dirtransfert");
+                    if ui.button("Fermer").clicked() {
+                        close = true;
+                    }
+                });
+            if close {
+                self.show_about = false;
+            }
+        }
     }
 }
 
