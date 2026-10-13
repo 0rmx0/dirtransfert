@@ -115,6 +115,7 @@ impl Manifest {
 }
 
 pub fn scan_dir<F: Fn(usize, usize, &str) + Send + Sync>(root: &std::path::Path, on_file: F) -> Result<Vec<FileEntry>, String> {
+    on_file(0, 0, "parcours des sous-dossiers...");
     let mut paths = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -142,7 +143,7 @@ pub fn scan_dir<F: Fn(usize, usize, &str) + Send + Sync>(root: &std::path::Path,
         .map(|n| n.get())
         .unwrap_or(1)
         .max(1);
-    let chunk_size = sized.len().div_ceil(workers);
+    let chunk_size = sized.len().div_ceil(workers).max(1);
     let done = std::sync::atomic::AtomicUsize::new(0);
     let cb = &on_file;
     let done_ref = &done;
