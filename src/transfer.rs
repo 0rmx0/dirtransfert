@@ -1,3 +1,4 @@
+use crate::crypto::SecureStream;
 use crate::firewall::RULE_NAME;
 use crate::protocol::*;
 use crate::sha256::Sha256;
@@ -96,7 +97,7 @@ impl Reporter for NullReporter {
     fn done(&self, _ok: bool, _n: usize, _tot: usize) {}
 }
 
-pub fn receive(addr: &str, out_dir: &Path, opts: &Opts, rep: &dyn Reporter) -> Result<(), String> {
+pub fn receive(addr: &str, out_dir: &Path, code: &str, opts: &Opts, rep: &dyn Reporter) -> Result<(), String> {
     let Some((_, port)) = parse_endpoint(addr) else {
         return Err(format!("adresse \"{}\" invalide (attendu hote:port)", addr));
     };
@@ -140,8 +141,11 @@ pub fn receive(addr: &str, out_dir: &Path, opts: &Opts, rep: &dyn Reporter) -> R
     }
     let listener = TcpListener::bind(addr).map_err(|e| format!("liaison de {} : {}", addr, e))?;
     rep.log(format!("en ecoute sur {}", addr));
-    let (mut stream, peer) = listener.accept().map_err(|e| format!("acceptation : {}", e))?;
+    let (sock, peer) = listener.accept().map_err(|e| format!("acceptation : {}", e))?;
     rep.log(format!("connexion de {}", peer));
+    let mut stream = SecureStream::server_handshake(sock, code)
+        .map_err(|e| format!("poignee de main chiffree avec {} : {}", peer, e))?;
+    rep.log("flux chiffre (ChaCha20-Poly1305, code de jumelage verifie)".to_string());
 
     let msg = read_msg(&mut stream).map_err(|e| format!("reception du manifeste : {}", e))?;
     let manifest = Manifest::decode(&msg)?;
@@ -222,7 +226,7 @@ pub fn receive(addr: &str, out_dir: &Path, opts: &Opts, rep: &dyn Reporter) -> R
     Ok(())
 }
 
-pub fn send(dir: &Path, addr: &str, rep: &dyn Reporter) -> Result<(), String> {
+pub fn send(dir: &Path, addr: &str, code: &str, rep: &dyn Reporter) -> Result<(), String> {
     if !dir.is_dir() {
         return Err(format!("{} n'est pas un repertoire", dir.display()));
     }
@@ -232,8 +236,11 @@ pub fn send(dir: &Path, addr: &str, rep: &dyn Reporter) -> Result<(), String> {
     let total: u64 = files.iter().map(|f| f.size).sum();
     rep.log(format!("{} fichiers, {} a transferer vers {}", files.len(), human(total), addr));
 
-    let mut stream = TcpStream::connect(addr).map_err(|e| format!("connexion a {} : {}", addr, e))?;
-    stream.set_nodelay(true).ok();
+    let sock = TcpStream::connect(addr).map_err(|e| format!("connexion a {} : {}", addr, e))?;
+    sock.set_nodelay(true).ok();
+    let mut stream = SecureStream::client_handshake(sock, code)
+        .map_err(|e| format!("poignee de main chiffree avec {} : {}", addr, e))?;
+    rep.log("flux chiffre (ChaCha20-Poly1305, code de jumelage verifie)".to_string());
 
     let manifest = Manifest { root_name, files };
     write_msg(&mut stream, &manifest.encode())
