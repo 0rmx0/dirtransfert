@@ -1,0 +1,10 @@
+[package]
+name = "dirtransfer"
+version = "0.1.0"
+edition = "2021"
+description = "Outil de transfert de repertoire via TCP avec verification SHA-256 et reprise"
+license = "MIT"
+
+[profile.release]
+lto = true
+strip = true
