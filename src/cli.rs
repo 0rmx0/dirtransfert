@@ -41,10 +41,13 @@ impl Drop for ConsoleReporter {
 
 fn usage(exe: &str) {
     eprintln!("Utilisation :");
-    eprintln!("  {} --cli receive <adresse:port> <repertoire_sortie> [--upnp] [--open-fw] [--close-fw]", exe);
-    eprintln!("  {} --cli send <repertoire> <adresse:port>", exe);
+    eprintln!("  {} --cli receive <adresse:port> <repertoire_sortie> [--code ABCD-2345] [--upnp] [--open-fw] [--close-fw]", exe);
+    eprintln!("  {} --cli send <repertoire> <adresse:port> --code ABCD-2345", exe);
     eprintln!();
     eprintln!("Sans --cli : interface graphique.");
+    eprintln!();
+    eprintln!("Options communes :");
+    eprintln!("  --code XXXX-XXXX  code de jumelage (obligatoire, chiffre le flux). Cote recepteur, genere-en un si omis.");
     eprintln!();
     eprintln!("Options du recepteur :");
     eprintln!("  --upnp        ouvre automatiquement la redirection de port sur la box (UPnP-IGD)");
@@ -60,26 +63,53 @@ pub fn run(argv: &[String]) -> i32 {
     let exe = argv.first().map(|s| s.as_str()).unwrap_or("dirtransfer");
     let mut opts = Opts::default();
     let mut args: Vec<String> = Vec::new();
-    for a in argv.iter().skip(1) {
+    let mut code: Option<String> = None;
+    let mut it = argv.iter().skip(1);
+    while let Some(a) = it.next() {
         match a.as_str() {
             "--cli" | "--console" => {}
             "--upnp" => opts.upnp = true,
             "--open-fw" | "--open-fw-after" => opts.open_fw = true,
             "--close-fw" | "--close-fw-after" => opts.close_fw_after = true,
+            "--code" => {
+                match it.next().and_then(|v| crate::crypto::norm_code(v)) {
+                    Some(c) => code = Some(c),
+                    None => {
+                        eprintln!("[erreur] --code attend un code de 8 caracteres (ex. ABCD-2345)");
+                        return 2;
+                    }
+                }
+            }
             _ => args.push(a.clone()),
         }
     }
     let (rep, _tick_ctrl) = ConsoleReporter::new();
     let res = match args.first().map(|s| s.as_str()) {
         Some("receive") => match (args.get(1), args.get(2)) {
-            (Some(addr), Some(out)) => transfer::receive(addr, Path::new(out), &opts, &rep),
+            (Some(addr), Some(out)) => {
+                let code = match code {
+                    Some(c) => c,
+                    None => {
+                        let c = crate::crypto::gen_code();
+                        println!("code de jumelage : {}  (a saisir sur l'emetteur)", c);
+                        c
+                    }
+                };
+                transfer::receive(addr, Path::new(out), &code, &opts, &rep)
+            }
             _ => {
                 usage(exe);
                 return 2;
             }
         },
         Some("send") => match (args.get(1), args.get(2)) {
-            (Some(dir), Some(addr)) => transfer::send(Path::new(dir), addr, &rep),
+            (Some(dir), Some(addr)) => {
+                let Some(code) = code else {
+                    eprintln!("[erreur] --code est obligatoire pour envoyer (ex. --code ABCD-2345)");
+                    return 2;
+                };
+                transfer::send(Path::new(dir), addr, &code, &rep)
+            }
             _ => {
                 usage(exe);
                 return 2;

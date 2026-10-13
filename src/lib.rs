@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod crypto;
 pub mod firewall;
 pub mod gui;
 pub mod protocol;
