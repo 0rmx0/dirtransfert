@@ -1,3 +1,4 @@
+use crate::crypto::SecureStream;
 use crate::firewall::RULE_NAME;
 use crate::protocol::*;
 use crate::sha256::Sha256;
@@ -85,6 +86,7 @@ pub struct Opts {
 
 pub trait Reporter: Send + Sync {
     fn log(&self, msg: String);
+    fn scan(&self, _done: usize, _total: usize, _current: &str) {}
     fn progress(&self, sent: u64, total: u64, speed_mbps: f64, pct: u64);
     fn done(&self, ok: bool, files_ok: usize, files_total: usize);
 }
@@ -92,11 +94,12 @@ pub trait Reporter: Send + Sync {
 pub struct NullReporter;
 impl Reporter for NullReporter {
     fn log(&self, _msg: String) {}
+    fn scan(&self, _d: usize, _t: usize, _c: &str) {}
     fn progress(&self, _s: u64, _t: u64, _sp: f64, _p: u64) {}
     fn done(&self, _ok: bool, _n: usize, _tot: usize) {}
 }
 
-pub fn receive(addr: &str, out_dir: &Path, opts: &Opts, rep: &dyn Reporter) -> Result<(), String> {
+pub fn receive(addr: &str, out_dir: &Path, code: &str, opts: &Opts, rep: &dyn Reporter) -> Result<(), String> {
     let Some((_, port)) = parse_endpoint(addr) else {
         return Err(format!("adresse \"{}\" invalide (attendu hote:port)", addr));
     };
@@ -140,8 +143,11 @@ pub fn receive(addr: &str, out_dir: &Path, opts: &Opts, rep: &dyn Reporter) -> R
     }
     let listener = TcpListener::bind(addr).map_err(|e| format!("liaison de {} : {}", addr, e))?;
     rep.log(format!("en ecoute sur {}", addr));
-    let (mut stream, peer) = listener.accept().map_err(|e| format!("acceptation : {}", e))?;
+    let (sock, peer) = listener.accept().map_err(|e| format!("acceptation : {}", e))?;
     rep.log(format!("connexion de {}", peer));
+    let mut stream = SecureStream::server_handshake(sock, code)
+        .map_err(|e| format!("poignee de main chiffree avec {} : {}", peer, e))?;
+    rep.log("flux chiffre (ChaCha20-Poly1305, code de jumelage verifie)".to_string());
 
     let msg = read_msg(&mut stream).map_err(|e| format!("reception du manifeste : {}", e))?;
     let manifest = Manifest::decode(&msg)?;
@@ -222,18 +228,34 @@ pub fn receive(addr: &str, out_dir: &Path, opts: &Opts, rep: &dyn Reporter) -> R
     Ok(())
 }
 
-pub fn send(dir: &Path, addr: &str, rep: &dyn Reporter) -> Result<(), String> {
+pub fn send(dir: &Path, addr: &str, code: &str, rep: &dyn Reporter) -> Result<(), String> {
     if !dir.is_dir() {
         return Err(format!("{} n'est pas un repertoire", dir.display()));
     }
     let root_name = dir.file_name().unwrap().to_string_lossy().to_string();
     rep.log(format!("analyse de {} ...", dir.display()));
-    let files = scan_dir(dir)?;
+    let last_report = Arc::new(std::sync::Mutex::new((0usize, std::time::Instant::now())));
+    let scan_rep = rep;
+    let scan_progress = move |done: usize, total: usize, current: &str| {
+        let Ok(mut last) = last_report.lock() else { return };
+        let advance = done > last.0;
+        let elapsed = last.1.elapsed().as_millis() as usize;
+        if done == total || (advance && elapsed >= 200) {
+            *last = (done, std::time::Instant::now());
+            drop(last);
+            scan_rep.scan(done, total, current);
+        }
+    };
+    let files = scan_dir(dir, scan_progress)?;
     let total: u64 = files.iter().map(|f| f.size).sum();
+    rep.scan(files.len(), files.len(), "analyse terminee");
     rep.log(format!("{} fichiers, {} a transferer vers {}", files.len(), human(total), addr));
 
-    let mut stream = TcpStream::connect(addr).map_err(|e| format!("connexion a {} : {}", addr, e))?;
-    stream.set_nodelay(true).ok();
+    let sock = TcpStream::connect(addr).map_err(|e| format!("connexion a {} : {}", addr, e))?;
+    sock.set_nodelay(true).ok();
+    let mut stream = SecureStream::client_handshake(sock, code)
+        .map_err(|e| format!("poignee de main chiffree avec {} : {}", addr, e))?;
+    rep.log("flux chiffre (ChaCha20-Poly1305, code de jumelage verifie)".to_string());
 
     let manifest = Manifest { root_name, files };
     write_msg(&mut stream, &manifest.encode())

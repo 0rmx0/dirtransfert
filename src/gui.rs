@@ -9,6 +9,7 @@ use std::task::{Context, Poll};
 
 enum Event {
     Log(String),
+    Scan { done: usize, total: usize, current: String },
     Progress { sent: u64, total: u64, speed_mbps: f64, pct: u64 },
     Done { ok: bool, files_ok: usize, files_total: usize },
 }
@@ -66,6 +67,9 @@ impl Reporter for GuiReporter {
     fn log(&self, msg: String) {
         let _ = self.tx.send(Event::Log(msg));
     }
+    fn scan(&self, done: usize, total: usize, current: &str) {
+        let _ = self.tx.send(Event::Scan { done, total, current: current.to_string() });
+    }
     fn progress(&self, sent: u64, total: u64, speed_mbps: f64, pct: u64) {
         let _ = self.tx.send(Event::Progress { sent, total, speed_mbps, pct });
     }
@@ -89,6 +93,8 @@ pub struct App {
     upnp: bool,
     open_fw: bool,
     close_fw: bool,
+    code: String,
+    code_error: Option<String>,
     running: bool,
     error: Option<String>,
     finished: Option<(bool, usize, usize)>,
@@ -96,6 +102,10 @@ pub struct App {
     total: u64,
     speed_mbps: f64,
     pct: u64,
+    scanning: bool,
+    scan_done: usize,
+    scan_total: usize,
+    scan_current: String,
     log: String,
     rx: Option<Receiver<Event>>,
     pick_rx: Option<Receiver<Option<PathBuf>>>,
@@ -111,6 +121,8 @@ impl Default for App {
             upnp: true,
             open_fw: true,
             close_fw: true,
+            code: String::new(),
+            code_error: None,
             running: false,
             error: None,
             finished: None,
@@ -118,6 +130,10 @@ impl Default for App {
             total: 0,
             speed_mbps: 0.0,
             pct: 0,
+            scanning: false,
+            scan_done: 0,
+            scan_total: 0,
+            scan_current: String::new(),
             log: String::new(),
             rx: None,
             pick_rx: None,
@@ -147,6 +163,10 @@ impl App {
         self.total = 0;
         self.speed_mbps = 0.0;
         self.pct = 0;
+        self.scanning = false;
+        self.scan_done = 0;
+        self.scan_total = 0;
+        self.scan_current = String::new();
         self.log.clear();
 
         let rep = Arc::new(GuiReporter { tx: tx.clone() });
@@ -154,6 +174,7 @@ impl App {
         let dir = self.dir.clone();
         let addr = self.addr.clone();
         let out_dir = self.out_dir.clone();
+        let code = self.code.clone();
         let opts = Opts {
             upnp: self.upnp,
             open_fw: self.open_fw,
@@ -164,11 +185,11 @@ impl App {
             let res = match mode {
                 Mode::Send => {
                     let p = PathBuf::from(&dir);
-                    transfer::send(&p, &addr, rep.as_ref())
+                    transfer::send(&p, &addr, &code, rep.as_ref())
                 }
                 Mode::Receive => {
                     let p = PathBuf::from(&out_dir);
-                    transfer::receive(&addr, &p, &opts, rep.as_ref())
+                    transfer::receive(&addr, &p, &code, &opts, rep.as_ref())
                 }
             };
             if let Err(e) = res {
@@ -187,6 +208,12 @@ impl eframe::App for App {
                     self.log.push_str(&m);
                     self.log.push('\n');
                 }
+                Ok(Event::Scan { done, total, current }) => {
+                    self.scanning = done < total || total == 0;
+                    self.scan_done = done;
+                    self.scan_total = total;
+                    self.scan_current = current;
+                }
                 Ok(Event::Progress { sent, total, speed_mbps, pct }) => {
                     self.sent = sent;
                     self.total = total;
@@ -195,6 +222,7 @@ impl eframe::App for App {
                 }
                 Ok(Event::Done { ok, files_ok, files_total }) => {
                     self.running = false;
+                    self.scanning = false;
                     self.finished = Some((ok, files_ok, files_total));
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
@@ -236,6 +264,22 @@ impl eframe::App for App {
             ui.separator();
 
             let enabled = !self.running;
+            ui.horizontal(|ui| {
+                ui.label("Code de jumelage :");
+                ui.add_enabled(enabled, egui::TextEdit::singleline(&mut self.code).desired_width(140.0).hint_text("XXXX-XXXX"));
+                if self.mode == Mode::Receive && ui.add_enabled(enabled, egui::Button::new("Generer")).clicked() {
+                    self.code = crate::crypto::gen_code();
+                }
+                self.code_error = match crate::crypto::norm_code(&self.code) {
+                    Some(_) => None,
+                    None if self.code.trim().is_empty() => None,
+                    None => Some("code invalide : 8 caracteres sans O/0/1/I (ex. ABCD-2345)".to_string()),
+                };
+            });
+            if let Some(e) = &self.code_error {
+                ui.colored_label(egui::Color32::from_rgb(0xFF, 0x6A, 0x4D), e);
+            }
+            ui.separator();
             if self.mode == Mode::Send {
                 ui.horizontal(|ui| {
                     ui.label("Repertoire a envoyer :");
@@ -267,7 +311,7 @@ impl eframe::App for App {
             }
             ui.separator();
 
-            let can_start = enabled && match self.mode {
+            let can_start = enabled && crate::crypto::norm_code(&self.code).is_some() && match self.mode {
                 Mode::Send => !self.dir.trim().is_empty() && transfer::parse_endpoint(&self.addr).is_some(),
                 Mode::Receive => !self.out_dir.trim().is_empty() && transfer::parse_endpoint(&self.addr).is_some(),
             };
@@ -285,6 +329,14 @@ impl eframe::App for App {
             }
             if let Some(e) = &self.error {
                 ui.colored_label(ETRANGE, e);
+            }
+
+            if self.scanning {
+                let frac = if self.scan_total > 0 { self.scan_done as f32 / self.scan_total as f32 } else { 0.0 };
+                ui.add(egui::ProgressBar::new(frac).text(format!(
+                    "Analyse : {}/{} fichiers — {}",
+                    self.scan_done, self.scan_total, self.scan_current
+                )));
             }
 
             if self.total > 0 || self.running {
@@ -314,7 +366,7 @@ impl eframe::App for App {
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new("cGFzIGRlIGRpZXV4LCBwYXMgZGUgbWFpdHJlcyAtIDBybXgw").monospace().color(OMBRE));
+                ui.label(egui::RichText::new("IkwnaW5mb3JtYXRpb24sIGMnZXN0IGxlIHBvdXZvaXIuIE1haXMgY29tbWUgdG91dCBwb3V2b2lyLCBpbCB5IGEgY2V1eCBxdWkgdmV1bGVudCBsZSBnYXJkZXIgcG91ciBldXguIiAtIEFhcm9uIFN3YXJ0eg==").monospace().color(OMBRE));
             });
         });
     }

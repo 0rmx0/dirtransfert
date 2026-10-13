@@ -1,3 +1,4 @@
+use sha2::Digest;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
@@ -113,8 +114,9 @@ impl Manifest {
     }
 }
 
-pub fn scan_dir(root: &std::path::Path) -> Result<Vec<FileEntry>, String> {
-    let mut files = Vec::new();
+pub fn scan_dir<F: Fn(usize, usize, &str) + Send + Sync>(root: &std::path::Path, on_file: F) -> Result<Vec<FileEntry>, String> {
+    on_file(0, 0, "parcours des sous-dossiers...");
+    let mut paths = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let entries = std::fs::read_dir(&dir).map_err(|e| format!("lecture de {} : {}", dir.display(), e))?;
@@ -124,24 +126,61 @@ pub fn scan_dir(root: &std::path::Path) -> Result<Vec<FileEntry>, String> {
             if path.is_dir() {
                 stack.push(path);
             } else if path.is_file() {
-                let rel = path.strip_prefix(root).unwrap();
-                let rel_path = rel.to_string_lossy().replace('\\', "/");
-                let meta = std::fs::metadata(&path).map_err(|e| format!("metadonnees de {} : {}", path.display(), e))?;
-                if meta.len() > 0 {
-                    let mut f = std::fs::File::open(&path).map_err(|e| format!("ouverture de {} : {}", path.display(), e))?;
-                    let mut hasher = crate::sha256::Sha256::new();
-                    let mut buf = vec![0u8; 4 * 1024 * 1024];
-                    loop {
-                        let n = f.read(&mut buf).map_err(|e| format!("lecture de {} : {}", path.display(), e))?;
-                        if n == 0 { break; }
-                        hasher.update(&buf[..n]);
-                    }
-                    files.push(FileEntry { rel_path, size: meta.len(), hash: hasher.finalize() });
-                } else {
-                    files.push(FileEntry { rel_path, size: 0, hash: crate::sha256::sha256(&[]) });
-                }
+                paths.push(path);
             }
         }
+    }
+
+    let mut sized: Vec<(PathBuf, String, u64)> = Vec::with_capacity(paths.len());
+    for path in paths {
+        let rel = path.strip_prefix(root).unwrap();
+        let rel_path = rel.to_string_lossy().replace('\\', "/");
+        let meta = std::fs::metadata(&path).map_err(|e| format!("metadonnees de {} : {}", path.display(), e))?;
+        sized.push((path, rel_path, meta.len()));
+    }
+
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .max(1);
+    let chunk_size = sized.len().div_ceil(workers).max(1);
+    let done = std::sync::atomic::AtomicUsize::new(0);
+    let cb = &on_file;
+    let done_ref = &done;
+    let total_files = sized.len();
+    let results: Vec<Result<Vec<FileEntry>, String>> = std::thread::scope(|scope| {
+        let handles: Vec<_> = sized
+            .chunks(chunk_size)
+            .map(|chunk| {
+                scope.spawn(move || {
+                    let mut out = Vec::with_capacity(chunk.len());
+                    for (path, rel_path, len) in chunk {
+                        cb(done_ref.load(std::sync::atomic::Ordering::Relaxed), total_files, rel_path);
+                        if *len > 0 {
+                            let mut f = std::fs::File::open(path).map_err(|e| format!("ouverture de {} : {}", path.display(), e))?;
+                            let mut hasher = sha2::Sha256::new();
+                            let mut buf = vec![0u8; 1024 * 1024];
+                            loop {
+                                let n = f.read(&mut buf).map_err(|e| format!("lecture de {} : {}", path.display(), e))?;
+                                if n == 0 { break; }
+                                hasher.update(&buf[..n]);
+                            }
+                            out.push(FileEntry { rel_path: rel_path.clone(), size: *len, hash: hasher.finalize().into() });
+                        } else {
+                            out.push(FileEntry { rel_path: rel_path.clone(), size: 0, hash: sha2::Sha256::digest(&[]).into() });
+                        }
+                        done_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    Ok(out)
+                })
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+
+    let mut files = Vec::with_capacity(sized.len());
+    for r in results {
+        files.extend(r?);
     }
     files.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
     Ok(files)

@@ -2,7 +2,7 @@
 name = "dirtransfer"
 version = "0.1.0"
 edition = "2021"
-description = "Outil de transfert de repertoire via TCP avec verification SHA-256 et reprise"
+description = "Outil de transfert de repertoire via TCP chiffre (ChaCha20-Poly1305, code de jumelage) avec verification SHA-256 et reprise"
 license = "MIT"
 
 [profile.release]
@@ -18,3 +18,8 @@ winresource = "0.1"
 
 [package.metadata.winresource]
 icon = "assets/icon.ico"
+# Chiffrement du flux (option 2 : code de jumelage + AEAD)
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+rand = "0.9"
+sha2 = "0.10"
