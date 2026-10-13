@@ -1,6 +1,9 @@
+mod firewall;
 mod protocol;
 mod sha256;
+mod upnp;
 
+use firewall::RULE_NAME;
 use protocol::*;
 use sha256::Sha256;
 use std::io::{Read, Write};
@@ -73,7 +76,34 @@ fn load_existing_hashes(dest_root: &Path, manifest: &Manifest) -> std::collectio
     done
 }
 
-fn cmd_receive(addr: &str, out_dir: &Path) -> Result<(), String> {
+fn parse_endpoint(s: &str) -> Option<(String, u16)> {
+    let (host, port) = s.rsplit_once(':')?;
+    if host.is_empty() { return None; }
+    port.parse::<u16>().ok().map(|p| (host.to_string(), p))
+}
+
+fn cmd_receive(addr: &str, out_dir: &Path, opts: &Opts) -> Result<(), String> {
+    let Some((_, port)) = parse_endpoint(addr) else {
+        return Err(format!("adresse \"{}\" invalide (attendu hote:port)", addr));
+    };
+    if opts.open_fw {
+        match firewall::ensure_firewall_rule(port) {
+            Ok(_) => println!("[recv] regle pare-feu \"{}\" ouverte sur le port TCP {}", RULE_NAME, port),
+            Err(e) => eprintln!("[recv] pare-feu : {} (ouvrez le port {} manuellement)", e, port),
+        }
+    }
+    let mut upnp_map = None;
+    if opts.upnp {
+        match upnp::add_port_mapping(port) {
+            Ok(m) => {
+                println!("[recv] redirection UPnP active : port TCP {} -> ce PC", m.external_port);
+                let ext = if m.external_ip.is_empty() { String::from("<IP_publique_de_la_box>") } else { m.external_ip.clone() };
+                println!("[recv] sur l'emetteur, lancez : dirtransfer send <repertoire> {}:{}", ext, m.external_port);
+                upnp_map = Some(m);
+            }
+            Err(e) => eprintln!("[recv] UPnP : {} (configurez la redirection manuellement sur la box)", e),
+        }
+    }
     let listener = TcpListener::bind(addr).map_err(|e| format!("liaison de {} : {}", addr, e))?;
     println!("[recv] en ecoute sur {}", addr);
     let (mut stream, peer) = listener.accept().map_err(|e| format!("acceptation : {}", e))?;
@@ -159,6 +189,19 @@ fn cmd_receive(addr: &str, out_dir: &Path) -> Result<(), String> {
     write_msg(&mut stream, b"OK").ok();
     drop(stream);
 
+    if let Some(m) = upnp_map {
+        match upnp::delete_port_mapping(m.external_port) {
+            Ok(()) => println!("[recv] redirection UPnP fermee (port {})", m.external_port),
+            Err(e) => eprintln!("[recv] fermeture UPnP : {} (fermez le port manuellement)", e),
+        }
+    }
+    if opts.close_fw_after {
+        match firewall::remove_firewall_rule() {
+            Ok(()) => println!("[recv] regle pare-feu \"{}\" supprimee", RULE_NAME),
+            Err(e) => eprintln!("[recv] suppression regle pare-feu : {}", e),
+        }
+    }
+
     println!("[recv] termines : {}/{} fichiers valides", ok, manifest.files.len());
     if !failures.is_empty() {
         eprintln!("[recv] echecs ({}) :", failures.len());
@@ -236,29 +279,56 @@ fn cmd_send(dir: &Path, addr: &str) -> Result<(), String> {
 
 fn usage(exe: &str) {
     eprintln!("Utilisation :");
-    eprintln!("  {} receive <adresse:port> <repertoire_sortie>", exe);
+    eprintln!("  {} receive <adresse:port> <repertoire_sortie> [--upnp] [--open-fw] [--close-fw]", exe);
     eprintln!("  {} send <repertoire> <adresse:port>", exe);
     eprintln!();
+    eprintln!("Options du recepteur :");
+    eprintln!("  --upnp        ouvre automatiquement la redirection de port sur la box (UPnP-IGD)");
+    eprintln!("  --open-fw     ouvre la regle entrante dans le pare-feu Windows (necessite administrateur)");
+    eprintln!("  --close-fw    ferme pare-feu + redirection UPnP apres le transfert");
+    eprintln!();
     eprintln!("Exemples :");
-    eprintln!("  {} receive 0.0.0.0:{} D:\\reception", exe, DEFAULT_PORT);
-    eprintln!("  {} send D:\\donnees 192.168.1.10:{}", exe, DEFAULT_PORT);
+    eprintln!("  {} receive 0.0.0.0:{} D:\\reception --upnp --open-fw --close-fw", exe, DEFAULT_PORT);
+    eprintln!("  {} send D:\\donnees 82.65.12.34:{}", exe, DEFAULT_PORT);
     eprintln!();
     eprintln!("Ordre : demarrez d'abord le recepteur, puis l'envoyeur.");
     eprintln!("Reprise : relancez les deux cotes, les fichiers deja transferes (checksum valide) sont ignores.");
 }
 
+#[derive(Default)]
+struct Opts {
+    upnp: bool,
+    open_fw: bool,
+    close_fw_after: bool,
+}
+
+fn parse_opts(args: &[String]) -> (Vec<String>, Opts) {
+    let mut pos = Vec::new();
+    let mut o = Opts::default();
+    for a in args {
+        match a.as_str() {
+            "--upnp" => o.upnp = true,
+            "--open-fw" | "--open-fw-after" => o.open_fw = true,
+            "--close-fw" | "--close-fw-after" => o.close_fw_after = true,
+            _ => pos.push(a.clone()),
+        }
+    }
+    (pos, o)
+}
+
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let exe = args.first().map(|s| s.as_str()).unwrap_or("dirtransfer");
-    let res = match args.get(1).map(|s| s.as_str()) {
-        Some("receive") => match (args.get(2), args.get(3)) {
-            (Some(addr), Some(out)) => cmd_receive(addr, Path::new(out)),
+    let argv: Vec<String> = std::env::args().collect();
+    let exe = argv.first().map(|s| s.as_str()).unwrap_or("dirtransfer");
+    let (args, opts) = parse_opts(&argv[1..]);
+    let res = match args.first().map(|s| s.as_str()) {
+        Some("receive") => match (args.get(1), args.get(2)) {
+            (Some(addr), Some(out)) => cmd_receive(addr, Path::new(out), &opts),
             _ => {
                 usage(exe);
                 std::process::exit(2);
             }
         },
-        Some("send") => match (args.get(2), args.get(3)) {
+        Some("send") => match (args.get(1), args.get(2)) {
             (Some(dir), Some(addr)) => cmd_send(Path::new(dir), addr),
             _ => {
                 usage(exe);
