@@ -8,6 +8,7 @@ use std::task::{Context, Poll};
 
 enum Event {
     Log(String),
+    Scan { done: usize, total: usize, current: String },
     Progress { sent: u64, total: u64, speed_mbps: f64, pct: u64 },
     Done { ok: bool, files_ok: usize, files_total: usize },
 }
@@ -65,6 +66,9 @@ impl Reporter for GuiReporter {
     fn log(&self, msg: String) {
         let _ = self.tx.send(Event::Log(msg));
     }
+    fn scan(&self, done: usize, total: usize, current: &str) {
+        let _ = self.tx.send(Event::Scan { done, total, current: current.to_string() });
+    }
     fn progress(&self, sent: u64, total: u64, speed_mbps: f64, pct: u64) {
         let _ = self.tx.send(Event::Progress { sent, total, speed_mbps, pct });
     }
@@ -97,6 +101,10 @@ pub struct App {
     total: u64,
     speed_mbps: f64,
     pct: u64,
+    scanning: bool,
+    scan_done: usize,
+    scan_total: usize,
+    scan_current: String,
     log: String,
     rx: Option<Receiver<Event>>,
     pick_rx: Option<Receiver<Option<PathBuf>>>,
@@ -121,6 +129,10 @@ impl Default for App {
             total: 0,
             speed_mbps: 0.0,
             pct: 0,
+            scanning: false,
+            scan_done: 0,
+            scan_total: 0,
+            scan_current: String::new(),
             log: String::new(),
             rx: None,
             pick_rx: None,
@@ -150,6 +162,10 @@ impl App {
         self.total = 0;
         self.speed_mbps = 0.0;
         self.pct = 0;
+        self.scanning = false;
+        self.scan_done = 0;
+        self.scan_total = 0;
+        self.scan_current = String::new();
         self.log.clear();
 
         let rep = Arc::new(GuiReporter { tx: tx.clone() });
@@ -191,6 +207,12 @@ impl eframe::App for App {
                     self.log.push_str(&m);
                     self.log.push('\n');
                 }
+                Ok(Event::Scan { done, total, current }) => {
+                    self.scanning = done < total || total == 0;
+                    self.scan_done = done;
+                    self.scan_total = total;
+                    self.scan_current = current;
+                }
                 Ok(Event::Progress { sent, total, speed_mbps, pct }) => {
                     self.sent = sent;
                     self.total = total;
@@ -199,6 +221,7 @@ impl eframe::App for App {
                 }
                 Ok(Event::Done { ok, files_ok, files_total }) => {
                     self.running = false;
+                    self.scanning = false;
                     self.finished = Some((ok, files_ok, files_total));
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
@@ -305,6 +328,14 @@ impl eframe::App for App {
             }
             if let Some(e) = &self.error {
                 ui.colored_label(ETRANGE, e);
+            }
+
+            if self.scanning {
+                let frac = if self.scan_total > 0 { self.scan_done as f32 / self.scan_total as f32 } else { 0.0 };
+                ui.add(egui::ProgressBar::new(frac).text(format!(
+                    "Analyse : {}/{} fichiers — {}",
+                    self.scan_done, self.scan_total, self.scan_current
+                )));
             }
 
             if self.total > 0 || self.running {

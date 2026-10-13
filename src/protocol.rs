@@ -114,7 +114,7 @@ impl Manifest {
     }
 }
 
-pub fn scan_dir(root: &std::path::Path) -> Result<Vec<FileEntry>, String> {
+pub fn scan_dir<F: Fn(usize, usize, &str) + Send + Sync>(root: &std::path::Path, on_file: F) -> Result<Vec<FileEntry>, String> {
     let mut paths = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -143,6 +143,10 @@ pub fn scan_dir(root: &std::path::Path) -> Result<Vec<FileEntry>, String> {
         .unwrap_or(1)
         .max(1);
     let chunk_size = sized.len().div_ceil(workers);
+    let done = std::sync::atomic::AtomicUsize::new(0);
+    let cb = &on_file;
+    let done_ref = &done;
+    let total_files = sized.len();
     let results: Vec<Result<Vec<FileEntry>, String>> = std::thread::scope(|scope| {
         let handles: Vec<_> = sized
             .chunks(chunk_size)
@@ -150,6 +154,7 @@ pub fn scan_dir(root: &std::path::Path) -> Result<Vec<FileEntry>, String> {
                 scope.spawn(move || {
                     let mut out = Vec::with_capacity(chunk.len());
                     for (path, rel_path, len) in chunk {
+                        cb(done_ref.load(std::sync::atomic::Ordering::Relaxed), total_files, rel_path);
                         if *len > 0 {
                             let mut f = std::fs::File::open(path).map_err(|e| format!("ouverture de {} : {}", path.display(), e))?;
                             let mut hasher = sha2::Sha256::new();
@@ -163,6 +168,7 @@ pub fn scan_dir(root: &std::path::Path) -> Result<Vec<FileEntry>, String> {
                         } else {
                             out.push(FileEntry { rel_path: rel_path.clone(), size: 0, hash: sha2::Sha256::digest(&[]).into() });
                         }
+                        done_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     }
                     Ok(out)
                 })

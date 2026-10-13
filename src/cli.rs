@@ -15,6 +15,10 @@ impl Reporter for ConsoleReporter {
         self.running.store(false, Ordering::Relaxed);
         println!("{}", msg);
     }
+    fn scan(&self, done: usize, total: usize, current: &str) {
+        print!("\r[analyse] {}/{} fichiers — {}   ", done, total, current);
+        let _ = std::io::stdout().flush();
+    }
     fn progress(&self, sent: u64, total: u64, speed_mbps: f64, pct: u64) {
         print!("\r[{}] / {} ({:.0} Mo/s) {}%   ", transfer::human(sent), transfer::human(total), speed_mbps, pct);
         let _ = std::io::stdout().flush();
