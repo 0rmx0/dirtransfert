@@ -4,7 +4,7 @@ use std::time::Duration;
 
 const SSDP_ADDR: (&str, u16) = ("239.255.255.250", 1900);
 const DESCRIPTION_TIMEOUT: Duration = Duration::from_secs(5);
-const RULE_DESC: &str = "dirtransfer";
+const RULE_DESC: &str = "DirTransfert";
 
 fn split_url(url: &str) -> Result<(String, u16, String), String> {
     let rest = url

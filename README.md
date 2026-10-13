@@ -1,4 +1,4 @@
-# dirtransfer
+# DirTransfert
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-magenta.svg)](LICENSE)
 
@@ -28,7 +28,7 @@ cd dirtransfer
 cargo build --release
 ```
 
-Le binaire est `target/release/dirtransfer` (`.exe` sous Windows). C'est un fichier autonome, aucun runtime requis.
+Le binaire est `target/release/DirTransfert` (`.exe` sous Windows). C'est un fichier autonome, aucun runtime requis.
 
 > Sous Linux, la GUI (egui + sélecteur de fichiers GTK) requiert `libgtk-3` et OpenGL — installés par défaut sur la plupart des distributions de bureau (Ubuntu inclus).
 
@@ -39,7 +39,7 @@ Le binaire est `target/release/dirtransfer` (`.exe` sous Windows). C'est un fich
 Lancez le binaire sans argument :
 
 ```sh
-./dirtransfer        # ou dirtransfer.exe sous Windows
+./DirTransfert        # ou DirTransfert.exe sous Windows
 ```
 
 Une fenêtre s'ouvre avec :
@@ -59,7 +59,7 @@ Sous Windows, pour l'ouverture du pare-feu, lancez l'exe **en tant qu'administra
 **1. Sur le PC récepteur** (sous Windows, console **ouverte en tant qu'administrateur**) :
 
 ```sh
-dirtransfer --cli receive 0.0.0.0:47500 /reception --upnp --open-fw --close-fw
+DirTransfert --cli receive 0.0.0.0:47500 /reception --upnp --open-fw --close-fw
 ```
 
 Sans `--code`, le récepteur génère un code de jumelage et l'affiche :
@@ -69,7 +69,7 @@ code de jumelage : AB2C-D34F  (à saisir sur l'émetteur)
 ```
 
 L'outil ouvre alors automatiquement :
-- la **règle entrante dans le pare-feu Windows** (`--open-fw`, règle nommée `dirtransfer`, port TCP 47500) ;
+- la **règle entrante dans le pare-feu Windows** (`--open-fw`, règle nommée `DirTransfert`, port TCP 47500) ;
 - la **redirection de port sur la box** (`--upnp`, via UPnP-IGD : découverte SSDP de la box, `AddPortMapping`, récupération de l'IP publique).
 
 Il affiche ensuite la **commande `send` prête à copier** avec l'IP publique de la box.
@@ -77,7 +77,7 @@ Il affiche ensuite la **commande `send` prête à copier** avec l'IP publique de
 **2. Sur le PC émetteur** :
 
 ```sh
-dirtransfer --cli send /donnees 82.65.12.34:47500 --code AB2C-D34F
+DirTransfert --cli send /donnees 82.65.12.34:47500 --code AB2C-D34F
 ```
 
 Le répertoire est recréé sous `/reception/donnees` avec toute son arborescence. À la fin du transfert, avec `--close-fw`, la règle pare-feu et la redirection UPnP sont **automatiquement fermées**.
@@ -127,7 +127,7 @@ Le code n'est jamais transmis sur le réseau : seule une preuve SHA-256 (hello a
 - `src/crypto.rs` — chiffrement du flux : dérivation Argon2id, AEAD ChaCha20-Poly1305, poignée de main authentifiée, `SecureStream` (Read/Write chiffrés).
 - `src/sha256.rs` — implémentation SHA-256 en pur Rust (testée contre les vecteurs NIST).
 - `src/upnp.rs` — client UPnP-IGD en pur Rust : découverte SSDP, description XML, appels SOAP `AddPortMapping`/`GetExternalIPAddress`/`DeletePortMapping`.
-- `src/firewall.rs` — règles `netsh advfirewall` pour le pare-feu Windows (règle entrante `dirtransfer`).
+- `src/firewall.rs` — règles `netsh advfirewall` pour le pare-feu Windows (règle entrante `DirTransfert`).
 - `src/transfer.rs` — cœur du transfert (send/receive) avec callbacks de progression, partagé par le CLI et la GUI.
 - `src/gui.rs` — interface graphique egui/eframe (renderer OpenGL), transfert et dialogue de sélection de dossier dans des threads dédiés.
 - `src/cli.rs` — interface en ligne de commande.
@@ -154,7 +154,7 @@ L'icône R_M_X (`assets/`) est appliquée à la fenêtre au lancement (`src/icon
 
 ```sh
 mkdir -p dirtransfer.app/Contents/MacOS
-cp target/release/dirtransfer dirtransfer.app/Contents/MacOS/
+cp target/release/DirTransfert dirtransfer.app/Contents/MacOS/
 cp assets/icon-256.png dirtransfer.app/Contents/Resources/AppIcon.png
-printf '<?xml version="1.0"?>\n<plist version="1.0"><dict><key>CFBundleExecutable</key><string>dirtransfer</string><key>CFBundleIconFile</key><string>AppIcon</string></dict></plist>' > dirtransfer.app/Contents/Info.plist
+printf '<?xml version="1.0"?>\n<plist version="1.0"><dict><key>CFBundleExecutable</key><string>DirTransfert</string><key>CFBundleIconFile</key><string>AppIcon</string></dict></plist>' > dirtransfer.app/Contents/Info.plist
 ```

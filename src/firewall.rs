@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use std::process::Command;
 
-pub const RULE_NAME: &str = "dirtransfer";
+pub const RULE_NAME: &str = "DirTransfert";
 
 #[cfg(windows)]
 fn is_admin() -> bool {
@@ -93,6 +93,6 @@ pub fn remove_firewall_rule() -> Result<(), String> {
 mod tests {
     #[test]
     fn rule_name_stable() {
-        assert_eq!(super::RULE_NAME, "dirtransfer");
+        assert_eq!(super::RULE_NAME, "DirTransfert");
     }
 }

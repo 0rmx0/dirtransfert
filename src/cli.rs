@@ -64,7 +64,7 @@ fn usage(exe: &str) {
 }
 
 pub fn run(argv: &[String]) -> i32 {
-    let exe = argv.first().map(|s| s.as_str()).unwrap_or("dirtransfer");
+    let exe = argv.first().map(|s| s.as_str()).unwrap_or("DirTransfert");
     let mut opts = Opts::default();
     let mut args: Vec<String> = Vec::new();
     let mut code: Option<String> = None;

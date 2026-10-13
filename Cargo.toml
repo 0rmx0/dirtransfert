@@ -5,6 +5,10 @@ edition = "2021"
 description = "Outil de transfert de repertoire via TCP chiffre (ChaCha20-Poly1305, code de jumelage) avec verification SHA-256 et reprise"
 license = "MIT"
 
+[[bin]]
+name = "DirTransfert"
+path = "src/main.rs"
+
 [profile.release]
 lto = true
 strip = true
