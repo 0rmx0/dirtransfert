@@ -1,34 +1,48 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">R_M_X — transfert décentralisé</title>
+  <desc id="desc">Icône sombre avec un fichier, deux flèches de transfert et quatre nœuds connectés en réseau.</desc>
   <defs>
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="6" result="b"/>
-      <feMerge>
-        <feMergeNode in="b"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00FFFF"/>
+      <stop offset=".48" stop-color="#40E0D0"/>
+      <stop offset="1" stop-color="#FF00FF"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
+  <rect width="512" height="512" rx="10" fill="#111111"/>
+  <rect x="52" y="52" width="408" height="408" rx="10" fill="#111111" stroke="url(#rim)" stroke-width="3" filter="url(#glow)"/>
 
-  <!-- fond -->
-  <rect width="512" height="512" rx="80" fill="#111111"/>
-
-  <!-- répertoques : disque / dossier stylisé -->
-  <g filter="url(#glow)" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <!-- dossier -->
-    <path d="M136 196 h84 l28 32 h128 a20 20 0 0 1 20 20 v132 a20 20 0 0 1 -20 20 H156 a20 20 0 0 1 -20 -20 V216 a20 20 0 0 1 20 -20 z"
-          stroke="#00FFFF" stroke-width="14"/>
-    <!-- flux de transfert -->
-    <path d="M256 240 v-84" stroke="#00FF7F" stroke-width="10"/>
-    <path d="M232 176 l24 -28 24 28" stroke="#00FF7F" stroke-width="10" fill="none"/>
-    <path d="M256 340 v-84" stroke="#00FF7F" stroke-width="10" opacity="0.55"/>
-    <!-- nœuds réseau -->
-    <circle cx="256" cy="148" r="10" fill="#FF00FF" stroke="none"/>
-    <circle cx="256" cy="256" r="10" fill="#FF00FF" stroke="none"/>
-    <circle cx="256" cy="364" r="10" fill="#FF00FF" stroke="none"/>
+  <!-- Réseau pair-à-pair -->
+  <g fill="none" stroke="#CCCCCC" stroke-width="2" opacity=".82">
+    <ellipse cx="256" cy="256" rx="145" ry="108"/>
+    <ellipse cx="256" cy="256" rx="92" ry="145"/>
+    <path d="M256 116V170 M111 256H170 M342 256H401 M256 342V396"/>
   </g>
 
-  <!-- couche cachée : UMVTUFRTRCBESB0Wk9DT1JQ== -->
-  <text x="256" y="486" font-family="Courier New, monospace" font-size="12"
-        fill="#222222" text-anchor="middle">Uk1YX0RJUkVOVFJBTlNFUl9OT0RF</text>
+  <!-- Nœuds du réseau -->
+  <g fill="#111111" stroke="#00FF7F" stroke-width="3" filter="url(#glow)">
+    <rect x="235" y="99" width="42" height="36" rx="8"/>
+    <rect x="90" y="238" width="42" height="36" rx="8"/>
+    <rect x="380" y="238" width="42" height="36" rx="8"/>
+    <rect x="235" y="377" width="42" height="36" rx="8"/>
+  </g>
+  <g fill="#00FF7F">
+    <path d="M250 110h5v5h-5z M258 110h5v5h-5z M250 118h5v5h-5z M258 118h5v5h-5z"/>
+    <path d="M105 249h5v5h-5z M113 249h5v5h-5z M105 257h5v5h-5z M113 257h5v5h-5z"/>
+    <path d="M395 249h5v5h-5z M403 249h5v5h-5z M395 257h5v5h-5z M403 257h5v5h-5z"/>
+    <path d="M250 388h5v5h-5z M258 388h5v5h-5z M250 396h5v5h-5z M258 396h5v5h-5z"/>
+  </g>
+
+  <!-- Fichier central -->
+  <path d="M204 184h70l34 34v104a10 10 0 0 1-10 10h-94a10 10 0 0 1-10-10V194a10 10 0 0 1 10-10z"
+        fill="#111111" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M274 184v25a9 9 0 0 0 9 9h25" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/>
+  <g stroke="#CCCCCC" stroke-width="4">
+    <path d="M213 224h31 M213 237h23 M213 250h29"/>
+  </g>
+  <path d="M230 268h36v-10l20 18-20 18v-10h-36z" fill="#00FFFF" filter="url(#glow)"/>
+  <path d="M282 298h-36v10l-20-18 20-18v10h36z" fill="#FF00FF" filter="url(#glow)"/>
 </svg>
