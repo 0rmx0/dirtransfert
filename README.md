@@ -143,3 +143,18 @@ Vérifie l'implémentation SHA-256 (vecteurs « abc », vide, et 1 Mo de « a »
 ## Licence
 
 Distribué sous licence [MIT](LICENSE).
+
+## Icône de l'application
+
+L'icône R_M_X (`assets/`) est appliquée à la fenêtre au lancement (`src/icon.rs` embarque les pixels RGBA), donc visible dans la barre des tâches et le dock :
+
+- **Linux** : icône de fenêtre via le protocole Wayland/X11 (aucune étape supplémentaire).
+- **Windows** : en plus de l'icône de fenêtre, l'icône est embarquée dans l'exécutable via `build.rs` + `assets/icon.ico` (`winresource`). `cargo build --release` suffit ; pour la barre des tâches, Windows peut mettre en cache l'icône des exécutables renommés — lancer depuis un chemin stable.
+- **macOS** : le dock n'affiche que l'icône d'un bundle `.app`. Empaqueter via `cargo bundle` ou :
+
+```sh
+mkdir -p dirtransfer.app/Contents/MacOS
+cp target/release/dirtransfer dirtransfer.app/Contents/MacOS/
+cp assets/icon-256.png dirtransfer.app/Contents/Resources/AppIcon.png
+printf '<?xml version="1.0"?>\n<plist version="1.0"><dict><key>CFBundleExecutable</key><string>dirtransfer</string><key>CFBundleIconFile</key><string>AppIcon</string></dict></plist>' > dirtransfer.app/Contents/Info.plist
+```
