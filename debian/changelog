@@ -1,0 +1,5 @@
+dirtransfert (0.1.0-1) unstable; urgency=medium
+
+  * Initial Debian packaging.
+
+ -- 0rmx0 <0rmx0@users.noreply.github.com>  Mon, 27 Jan 2025 00:00:00 +0000

@@ -25,5 +25,20 @@ sha2 = "0.10"
 [build-dependencies]
 winresource = "0.1"
 
+[package.metadata.deb]
+maintainer = "0rmx0"
+copyright = "2025, 0rmx0"
+license-file = ["LICENSE"]
+extended-description-file = "README.md"
+depends = "libgl1, libegl1, libxkbcommon0, libwayland-client0"
+section = "utils"
+priority = "optional"
+changelog = "debian/changelog"
+assets = [
+    ["target/release/DirTransfert", "usr/bin/dirtransfert", "755"],
+    ["assets/icon.svg", "usr/share/icons/hicolor/scalable/apps/dirtransfert.svg", "644"],
+    ["packaging/dirtransfert.desktop", "usr/share/applications/dirtransfert.desktop", "644"],
+]
+
 [package.metadata.winresource]
 icon = "assets/icon.ico"
