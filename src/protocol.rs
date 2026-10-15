@@ -3,7 +3,6 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 
 pub const MAGIC: [u8; 4] = *b"DTX1";
-#[allow(dead_code)]
 pub const CHUNK_SIZE: usize = 1024 * 1024;
 #[allow(dead_code)]
 pub const DEFAULT_PORT: u16 = 47500;
@@ -38,17 +37,32 @@ impl FileEntry {
         let off = 4 + plen;
         let size = u64::from_be_bytes(data[off..off + 8].try_into().unwrap());
         let hash = data[off + 8..off + 40].try_into().unwrap();
-        Ok((FileEntry { rel_path, size, hash }, &data[off + 40..]))
+        Ok((
+            FileEntry {
+                rel_path,
+                size,
+                hash,
+            },
+            &data[off + 40..],
+        ))
     }
 }
 
-pub fn write_msg<S: Write>(s: &mut S, msg: &[u8]) -> std::io::Result<()> {
-    let mut hdr = [0u8; 8];
+pub const KIND_META: u8 = 1;
+pub const KIND_CHUNK: u8 = 2;
+
+pub fn write_kind<S: Write>(s: &mut S, kind: u8, msg: &[u8]) -> std::io::Result<()> {
+    let mut hdr = [0u8; 9];
     hdr[..4].copy_from_slice(&MAGIC);
-    hdr[4..].copy_from_slice(&(msg.len() as u32).to_be_bytes());
+    hdr[4] = kind;
+    hdr[5..].copy_from_slice(&(msg.len() as u32).to_be_bytes());
     s.write_all(&hdr)?;
     s.write_all(msg)?;
     Ok(())
+}
+
+pub fn write_msg<S: Write>(s: &mut S, msg: &[u8]) -> std::io::Result<()> {
+    write_kind(s, KIND_META, msg)
 }
 
 pub fn read_exact<S: Read>(s: &mut S, n: usize) -> std::io::Result<Vec<u8>> {
@@ -57,22 +71,33 @@ pub fn read_exact<S: Read>(s: &mut S, n: usize) -> std::io::Result<Vec<u8>> {
     Ok(buf)
 }
 
-pub fn read_msg<S: Read>(s: &mut S) -> std::io::Result<Vec<u8>> {
-    let hdr = read_exact(s, 8)?;
+pub fn read_kind<S: Read>(s: &mut S) -> std::io::Result<(u8, Vec<u8>)> {
+    let hdr = read_exact(s, 9)?;
     if hdr[..4] != MAGIC {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "signature de protocole invalide",
         ));
     }
-    let len = u32::from_be_bytes(hdr[4..].try_into().unwrap()) as usize;
+    let len = u32::from_be_bytes(hdr[5..].try_into().unwrap()) as usize;
     if len > 512 * 1024 * 1024 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "message trop volumineux",
         ));
     }
-    read_exact(s, len)
+    Ok((hdr[4], read_exact(s, len)?))
+}
+
+pub fn read_msg<S: Read>(s: &mut S) -> std::io::Result<Vec<u8>> {
+    let (kind, msg) = read_kind(s)?;
+    if kind != KIND_META {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "type de message inattendu",
+        ));
+    }
+    Ok(msg)
 }
 
 pub struct Manifest {
@@ -114,12 +139,16 @@ impl Manifest {
     }
 }
 
-pub fn scan_dir<F: Fn(usize, usize, &str) + Send + Sync>(root: &std::path::Path, on_file: F) -> Result<Vec<FileEntry>, String> {
+pub fn scan_dir<F: Fn(usize, usize, &str) + Send + Sync>(
+    root: &std::path::Path,
+    on_file: F,
+) -> Result<Vec<FileEntry>, String> {
     on_file(0, 0, "parcours des sous-dossiers...");
     let mut paths = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let entries = std::fs::read_dir(&dir).map_err(|e| format!("lecture de {} : {}", dir.display(), e))?;
+        let entries =
+            std::fs::read_dir(&dir).map_err(|e| format!("lecture de {} : {}", dir.display(), e))?;
         let mut items: Vec<PathBuf> = entries.filter_map(|e| e.ok()).map(|e| e.path()).collect();
         items.sort();
         for path in items {
@@ -135,7 +164,8 @@ pub fn scan_dir<F: Fn(usize, usize, &str) + Send + Sync>(root: &std::path::Path,
     for path in paths {
         let rel = path.strip_prefix(root).unwrap();
         let rel_path = rel.to_string_lossy().replace('\\', "/");
-        let meta = std::fs::metadata(&path).map_err(|e| format!("metadonnees de {} : {}", path.display(), e))?;
+        let meta = std::fs::metadata(&path)
+            .map_err(|e| format!("metadonnees de {} : {}", path.display(), e))?;
         sized.push((path, rel_path, meta.len()));
     }
 
@@ -155,19 +185,36 @@ pub fn scan_dir<F: Fn(usize, usize, &str) + Send + Sync>(root: &std::path::Path,
                 scope.spawn(move || {
                     let mut out = Vec::with_capacity(chunk.len());
                     for (path, rel_path, len) in chunk {
-                        cb(done_ref.load(std::sync::atomic::Ordering::Relaxed), total_files, rel_path);
+                        cb(
+                            done_ref.load(std::sync::atomic::Ordering::Relaxed),
+                            total_files,
+                            rel_path,
+                        );
                         if *len > 0 {
-                            let mut f = std::fs::File::open(path).map_err(|e| format!("ouverture de {} : {}", path.display(), e))?;
+                            let mut f = std::fs::File::open(path)
+                                .map_err(|e| format!("ouverture de {} : {}", path.display(), e))?;
                             let mut hasher = sha2::Sha256::new();
                             let mut buf = vec![0u8; 1024 * 1024];
                             loop {
-                                let n = f.read(&mut buf).map_err(|e| format!("lecture de {} : {}", path.display(), e))?;
-                                if n == 0 { break; }
+                                let n = f.read(&mut buf).map_err(|e| {
+                                    format!("lecture de {} : {}", path.display(), e)
+                                })?;
+                                if n == 0 {
+                                    break;
+                                }
                                 hasher.update(&buf[..n]);
                             }
-                            out.push(FileEntry { rel_path: rel_path.clone(), size: *len, hash: hasher.finalize().into() });
+                            out.push(FileEntry {
+                                rel_path: rel_path.clone(),
+                                size: *len,
+                                hash: hasher.finalize().into(),
+                            });
                         } else {
-                            out.push(FileEntry { rel_path: rel_path.clone(), size: 0, hash: sha2::Sha256::digest(&[]).into() });
+                            out.push(FileEntry {
+                                rel_path: rel_path.clone(),
+                                size: 0,
+                                hash: sha2::Sha256::digest([]).into(),
+                            });
                         }
                         done_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     }

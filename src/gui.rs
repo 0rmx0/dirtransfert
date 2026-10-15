@@ -9,9 +9,22 @@ use std::task::{Context, Poll};
 
 enum Event {
     Log(String),
-    Scan { done: usize, total: usize, current: String },
-    Progress { sent: u64, total: u64, speed_mbps: f64, pct: u64 },
-    Done { ok: bool, files_ok: usize, files_total: usize },
+    Scan {
+        done: usize,
+        total: usize,
+        current: String,
+    },
+    Progress {
+        sent: u64,
+        total: u64,
+        speed_mbps: f64,
+        pct: u64,
+    },
+    Done {
+        ok: bool,
+        files_ok: usize,
+        files_total: usize,
+    },
 }
 
 // Charte graphique R_M_X — tokens v1.1
@@ -68,18 +81,30 @@ impl Reporter for GuiReporter {
         let _ = self.tx.send(Event::Log(msg));
     }
     fn scan(&self, done: usize, total: usize, current: &str) {
-        let _ = self.tx.send(Event::Scan { done, total, current: current.to_string() });
+        let _ = self.tx.send(Event::Scan {
+            done,
+            total,
+            current: current.to_string(),
+        });
     }
     fn progress(&self, sent: u64, total: u64, speed_mbps: f64, pct: u64) {
-        let _ = self.tx.send(Event::Progress { sent, total, speed_mbps, pct });
+        let _ = self.tx.send(Event::Progress {
+            sent,
+            total,
+            speed_mbps,
+            pct,
+        });
     }
     fn done(&self, ok: bool, files_ok: usize, files_total: usize) {
-        let _ = self.tx.send(Event::Done { ok, files_ok, files_total });
+        let _ = self.tx.send(Event::Done {
+            ok,
+            files_ok,
+            files_total,
+        });
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
-#[derive(Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Mode {
     Send,
     Receive,
@@ -149,7 +174,10 @@ impl App {
         self.pick_rx = Some(rx);
         std::thread::spawn(move || {
             let picked = block_on(async {
-                rfd::AsyncFileDialog::new().pick_folder().await.map(|h| h.path().to_path_buf())
+                rfd::AsyncFileDialog::new()
+                    .pick_folder()
+                    .await
+                    .map(|h| h.path().to_path_buf())
             });
             let _ = tx.send(picked);
         });
@@ -196,7 +224,11 @@ impl App {
             };
             if let Err(e) = res {
                 let _ = tx_err.send(Event::Log(format!("[erreur] {}", e)));
-                let _ = tx_err.send(Event::Done { ok: false, files_ok: 0, files_total: 0 });
+                let _ = tx_err.send(Event::Done {
+                    ok: false,
+                    files_ok: 0,
+                    files_total: 0,
+                });
             }
         });
     }
@@ -210,19 +242,32 @@ impl eframe::App for App {
                     self.log.push_str(&m);
                     self.log.push('\n');
                 }
-                Ok(Event::Scan { done, total, current }) => {
+                Ok(Event::Scan {
+                    done,
+                    total,
+                    current,
+                }) => {
                     self.scanning = done < total || total == 0;
                     self.scan_done = done;
                     self.scan_total = total;
                     self.scan_current = current;
                 }
-                Ok(Event::Progress { sent, total, speed_mbps, pct }) => {
+                Ok(Event::Progress {
+                    sent,
+                    total,
+                    speed_mbps,
+                    pct,
+                }) => {
                     self.sent = sent;
                     self.total = total;
                     self.speed_mbps = speed_mbps;
                     self.pct = pct;
                 }
-                Ok(Event::Done { ok, files_ok, files_total }) => {
+                Ok(Event::Done {
+                    ok,
+                    files_ok,
+                    files_total,
+                }) => {
                     self.running = false;
                     self.scanning = false;
                     self.finished = Some((ok, files_ok, files_total));
@@ -246,13 +291,15 @@ impl eframe::App for App {
                 }
                 Ok(None) => self.pick_rx = None,
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_millis(100));
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => self.pick_rx = None,
             }
         }
         if self.running {
-            ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(200));
         }
 
         egui::CentralPanel::default().show(ui, |ui| {
@@ -383,7 +430,11 @@ impl eframe::App for App {
                 .collapsible(false)
                 .default_width(460.0)
                 .show(ui.ctx(), |ui| {
-                    ui.heading("DirTransfert 0.1.0");
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .max_height(ui.ctx().input(|i| i.viewport().monitor_size.map(|s| s.y).unwrap_or(600.0)) * 0.7)
+                        .show(ui, |ui| {
+                    ui.heading(format!("DirTransfert {}", env!("CARGO_PKG_VERSION")));
                     ui.separator();
                     ui.label(egui::RichText::new("Outil de transfert de répertoire décentralisé — TCP chiffré (ChaCha20-Poly1305), code de jumelage, vérification SHA-256 et reprise.").color(BRUME));
                     ui.add_space(8.0);
@@ -413,6 +464,7 @@ impl eframe::App for App {
                     if ui.button("Fermer").clicked() {
                         close = true;
                     }
+                        });
                 });
             if close {
                 self.show_about = false;
@@ -450,11 +502,15 @@ pub fn launch() -> Result<(), String> {
             .with_icon(std::sync::Arc::new(icon)),
         ..Default::default()
     };
-    eframe::run_native("DirTransfert", native, Box::new(|cc| {
-        cc.egui_ctx.set_visuals(rmx_visuals());
-        Ok(Box::new(App::default()))
-    }))
-        .map_err(|e| format!("lancement de la fenetre : {}", e))
+    eframe::run_native(
+        "DirTransfert",
+        native,
+        Box::new(|cc| {
+            cc.egui_ctx.set_visuals(rmx_visuals());
+            Ok(Box::new(App::default()))
+        }),
+    )
+    .map_err(|e| format!("lancement de la fenetre : {}", e))
 }
 
 #[cfg(test)]

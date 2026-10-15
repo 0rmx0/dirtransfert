@@ -1,18 +1,13 @@
 use crate::transfer::{self, Opts, Reporter};
-use std::path::Path;
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::path::Path;
 
 const DEFAULT_PORT: u16 = 47500;
 
-struct ConsoleReporter {
-    running: Arc<AtomicBool>,
-}
+struct ConsoleReporter;
 
 impl Reporter for ConsoleReporter {
     fn log(&self, msg: String) {
-        self.running.store(false, Ordering::Relaxed);
         println!("{}", msg);
     }
     fn scan(&self, done: usize, total: usize, current: &str) {
@@ -20,7 +15,13 @@ impl Reporter for ConsoleReporter {
         let _ = std::io::stdout().flush();
     }
     fn progress(&self, sent: u64, total: u64, speed_mbps: f64, pct: u64) {
-        print!("\r[{}] / {} ({:.0} Mo/s) {}%   ", transfer::human(sent), transfer::human(total), speed_mbps, pct);
+        print!(
+            "\r[{}] / {} ({:.0} Mo/s) {}%   ",
+            transfer::human(sent),
+            transfer::human(total),
+            speed_mbps,
+            pct
+        );
         let _ = std::io::stdout().flush();
     }
     fn done(&self, ok: bool, files_ok: usize, files_total: usize) {
@@ -32,21 +33,18 @@ impl Reporter for ConsoleReporter {
 }
 
 impl ConsoleReporter {
-    fn new() -> (Self, Arc<AtomicBool>) {
-        let running = Arc::new(AtomicBool::new(true));
-        let r = ConsoleReporter { running: running.clone() };
-        (r, running)
+    fn new() -> Self {
+        ConsoleReporter
     }
-}
-
-impl Drop for ConsoleReporter {
-    fn drop(&mut self) {}
 }
 
 fn usage(exe: &str) {
     eprintln!("Utilisation :");
     eprintln!("  {} --cli receive <adresse:port> <repertoire_sortie> [--code ABCD-2345] [--upnp] [--open-fw] [--close-fw]", exe);
-    eprintln!("  {} --cli send <repertoire> <adresse:port> --code ABCD-2345", exe);
+    eprintln!(
+        "  {} --cli send <repertoire> <adresse:port> --code ABCD-2345",
+        exe
+    );
     eprintln!();
     eprintln!("Sans --cli : interface graphique.");
     eprintln!();
@@ -59,8 +57,14 @@ fn usage(exe: &str) {
     eprintln!("  --close-fw    ferme pare-feu + redirection UPnP apres le transfert");
     eprintln!();
     eprintln!("Exemples :");
-    eprintln!("  {} --cli receive 0.0.0.0:{} D:\\\\reception --upnp --open-fw --close-fw", exe, DEFAULT_PORT);
-    eprintln!("  {} --cli send D:\\\\donnees 82.65.12.34:{}", exe, DEFAULT_PORT);
+    eprintln!(
+        "  {} --cli receive 0.0.0.0:{} D:\\\\reception --upnp --open-fw --close-fw",
+        exe, DEFAULT_PORT
+    );
+    eprintln!(
+        "  {} --cli send D:\\\\donnees 82.65.12.34:{}",
+        exe, DEFAULT_PORT
+    );
 }
 
 pub fn run(argv: &[String]) -> i32 {
@@ -75,19 +79,17 @@ pub fn run(argv: &[String]) -> i32 {
             "--upnp" => opts.upnp = true,
             "--open-fw" | "--open-fw-after" => opts.open_fw = true,
             "--close-fw" | "--close-fw-after" => opts.close_fw_after = true,
-            "--code" => {
-                match it.next().and_then(|v| crate::crypto::norm_code(v)) {
-                    Some(c) => code = Some(c),
-                    None => {
-                        eprintln!("[erreur] --code attend un code de 8 caracteres (ex. ABCD-2345)");
-                        return 2;
-                    }
+            "--code" => match it.next().and_then(|v| crate::crypto::norm_code(v)) {
+                Some(c) => code = Some(c),
+                None => {
+                    eprintln!("[erreur] --code attend un code de 8 caracteres (ex. ABCD-2345)");
+                    return 2;
                 }
-            }
+            },
             _ => args.push(a.clone()),
         }
     }
-    let (rep, _tick_ctrl) = ConsoleReporter::new();
+    let rep = ConsoleReporter::new();
     let res = match args.first().map(|s| s.as_str()) {
         Some("receive") => match (args.get(1), args.get(2)) {
             (Some(addr), Some(out)) => {
@@ -109,7 +111,9 @@ pub fn run(argv: &[String]) -> i32 {
         Some("send") => match (args.get(1), args.get(2)) {
             (Some(dir), Some(addr)) => {
                 let Some(code) = code else {
-                    eprintln!("[erreur] --code est obligatoire pour envoyer (ex. --code ABCD-2345)");
+                    eprintln!(
+                        "[erreur] --code est obligatoire pour envoyer (ex. --code ABCD-2345)"
+                    );
                     return 2;
                 };
                 transfer::send(Path::new(dir), addr, &code, &rep)

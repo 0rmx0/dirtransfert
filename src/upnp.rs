@@ -82,7 +82,6 @@ fn find_tag(xml: &str, tag: &str) -> Option<String> {
     Some(after[..j].trim().to_string())
 }
 
-
 fn parse_services(desc: &str, location: &str) -> Vec<(String, u16, String, String)> {
     let mut out = Vec::new();
     let url_base = find_tag(desc, "URLBase").unwrap_or_default();
@@ -160,8 +159,11 @@ fn ssdp_discover(timeout: Duration) -> Vec<String> {
 
 fn local_ip_towards(host: &str) -> Result<String, String> {
     let s = UdpSocket::bind("0.0.0.0:0").map_err(|e| format!("bind : {}", e))?;
-    s.connect((host, 80)).map_err(|e| format!("connect : {}", e))?;
-    let addr = s.local_addr().map_err(|e| format!("adresse locale : {}", e))?;
+    s.connect((host, 80))
+        .map_err(|e| format!("connect : {}", e))?;
+    let addr = s
+        .local_addr()
+        .map_err(|e| format!("adresse locale : {}", e))?;
     Ok(addr.ip().to_string())
 }
 
@@ -184,7 +186,6 @@ fn soap_call(
     http_raw(host, port, &req)
 }
 
-
 pub fn local_ip() -> String {
     let s = match UdpSocket::bind("0.0.0.0:0") {
         Ok(s) => s,
@@ -193,7 +194,9 @@ pub fn local_ip() -> String {
     if s.connect("8.8.8.8:80").is_err() {
         return String::new();
     }
-    s.local_addr().map(|a| a.ip().to_string()).unwrap_or_default()
+    s.local_addr()
+        .map(|a| a.ip().to_string())
+        .unwrap_or_default()
 }
 
 pub struct Mapping {
@@ -232,7 +235,6 @@ fn try_add_on_device(location: &str, port: u16) -> Result<Mapping, String> {
     }
     Err("la box a refuse l'ouverture du port".into())
 }
-
 
 pub fn get_external_ip() -> Result<String, String> {
     let locations = ssdp_discover(Duration::from_secs(2));

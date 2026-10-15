@@ -36,7 +36,14 @@ pub fn ensure_firewall_rule(port: u16) -> Result<bool, String> {
         return Err("droits administrateur requis (lancez en tant qu'administrateur)".into());
     }
     let exists = Command::new("netsh")
-        .args(["advfirewall", "firewall", "rule", "show", "rule", &format!("name={}", RULE_NAME)])
+        .args([
+            "advfirewall",
+            "firewall",
+            "rule",
+            "show",
+            "rule",
+            &format!("name={}", RULE_NAME),
+        ])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).contains(RULE_NAME))
         .unwrap_or(false);
@@ -76,7 +83,13 @@ pub fn remove_firewall_rule() -> Result<(), String> {
         &format!("name={}", RULE_NAME),
     ])
     .map(|_| ())
-    .map_err(|e| if e.contains("aucune") || e.to_lowercase().contains("no rules") { String::new() } else { e })
+    .map_err(|e| {
+        if e.contains("aucune") || e.to_lowercase().contains("no rules") {
+            String::new()
+        } else {
+            e
+        }
+    })
 }
 
 #[cfg(not(windows))]
