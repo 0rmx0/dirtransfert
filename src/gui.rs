@@ -302,6 +302,19 @@ impl eframe::App for App {
                 .request_repaint_after(std::time::Duration::from_millis(200));
         }
 
+        egui::Panel::bottom("rmx_footer")
+            .frame(
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(10, 4))
+                    .corner_radius(egui::CornerRadius::same(10))
+                    .fill(egui::Color32::TRANSPARENT)
+            )
+            .show(ui, |ui| {
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new("IkwnaW5mb3JtYXRpb24sIGMnZXN0IGxlIHBvdXZvaXIuIE1haXMgY29tbWUgdG91dCBwb3V2b2lyLCBpbCB5IGEgY2V1eCBxdWkgdmV1bGVudCBsZSBnYXJkZXIgcG91ciBldXguIiAtIEFhcm9uIFN3YXJ0eg==").monospace().color(OMBRE));
+                });
+            });
+
         egui::CentralPanel::default().show(ui, |ui| {
             ui.heading("DirTransfert");
             if ui.button(egui::RichText::new("À propos").color(SPECTRE)).clicked() {
@@ -414,11 +427,6 @@ impl eframe::App for App {
                             .interactive(false),
                     );
                 });
-            });
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("IkwnaW5mb3JtYXRpb24sIGMnZXN0IGxlIHBvdXZvaXIuIE1haXMgY29tbWUgdG91dCBwb3V2b2lyLCBpbCB5IGEgY2V1eCBxdWkgdmV1bGVudCBsZSBnYXJkZXIgcG91ciBldXguIiAtIEFhcm9uIFN3YXJ0eg==").monospace().color(OMBRE));
             });
         });
 
