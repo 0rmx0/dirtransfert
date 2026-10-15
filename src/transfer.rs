@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -127,6 +127,22 @@ pub struct Opts {
     pub upnp: bool,
     pub open_fw: bool,
     pub close_fw_after: bool,
+    pub pipeline: Option<usize>,
+    pub cancel: Option<Arc<AtomicBool>>,
+}
+
+pub const CANCELLED_MSG: &str = "transfert annule par l'utilisateur";
+
+fn cancelled(cancel: &Option<Arc<AtomicBool>>) -> bool {
+    cancel.as_ref().is_some_and(|c| c.load(Ordering::Relaxed))
+}
+
+fn check_cancel(cancel: &Option<Arc<AtomicBool>>) -> Result<(), String> {
+    if cancelled(cancel) {
+        Err(CANCELLED_MSG.into())
+    } else {
+        Ok(())
+    }
 }
 
 pub trait Reporter: Send + Sync {
@@ -294,10 +310,11 @@ pub fn receive(
         }
     }
 
+    let window = opts.pipeline.unwrap_or(PIPELINE_WINDOW).clamp(1, 64);
     let mut pending: std::collections::VecDeque<&FileEntry> = to_request.iter().copied().collect();
     let mut in_flight: std::collections::VecDeque<&FileEntry> = std::collections::VecDeque::new();
 
-    while !pending.is_empty() && in_flight.len() < PIPELINE_WINDOW {
+    while !pending.is_empty() && in_flight.len() < window {
         let entry = pending.pop_front().unwrap();
         write_msg(&mut stream, entry.rel_path.as_bytes())
             .map_err(|e| format!("envoi de requete pour {} : {}", entry.rel_path, e))?;
@@ -305,8 +322,12 @@ pub fn receive(
     }
 
     while let Some(entry) = in_flight.pop_front() {
+        if cancelled(&opts.cancel) {
+            break;
+        }
         let dest = dest_root.join(rel_to_os(&entry.rel_path));
         let res = write_stream_atomically(&dest, entry.size, entry.hash, |emit| loop {
+            check_cancel(&opts.cancel)?;
             let (kind, data) = read_kind(&mut stream)
                 .map_err(|e| format!("reception de {} : {}", entry.rel_path, e))?;
             match kind {
@@ -394,10 +415,17 @@ pub fn receive(
     Ok(())
 }
 
-pub fn send(dir: &Path, addr: &str, code: &str, rep: &dyn Reporter) -> Result<(), String> {
+pub fn send(
+    dir: &Path,
+    addr: &str,
+    code: &str,
+    cancel: &Option<Arc<AtomicBool>>,
+    rep: &dyn Reporter,
+) -> Result<(), String> {
     if !dir.is_dir() {
         return Err(format!("{} n'est pas un repertoire", dir.display()));
     }
+    check_cancel(cancel)?;
     let root_name = dir.file_name().unwrap().to_string_lossy().to_string();
     rep.log(format!("analyse de {} ...", dir.display()));
     let last_report = Arc::new(std::sync::Mutex::new((0usize, std::time::Instant::now())));
@@ -440,6 +468,7 @@ pub fn send(dir: &Path, addr: &str, code: &str, rep: &dyn Reporter) -> Result<()
 
     let mut remaining = manifest.files.iter().filter(|f| f.size > 0).count();
     while remaining > 0 {
+        check_cancel(cancel)?;
         let data = read_msg(&mut stream).map_err(|e| format!("protocole : {}", e))?;
         if data.is_empty() {
             return Err("requete vide du recepteur".into());
@@ -540,7 +569,14 @@ mod tests {
         });
 
         let rep = NullReporter;
-        send(&src_dir, &format!("127.0.0.1:{}", port), "ABCD-2345", &rep).unwrap();
+        send(
+            &src_dir,
+            &format!("127.0.0.1:{}", port),
+            "ABCD-2345",
+            &None,
+            &rep,
+        )
+        .unwrap();
         server.join().unwrap();
 
         let got_big = std::fs::read(out_dir.join("dtx_e2e_src/gros.bin")).unwrap();
@@ -565,5 +601,40 @@ mod tests {
         let res = write_stream_atomically(&dest, 3, bad, |emit| emit(b"abc"));
         assert!(res.is_err());
         assert!(!dest.exists());
+    }
+}
+
+#[cfg(test)]
+mod cancel_tests {
+    use super::*;
+
+    #[test]
+    fn annulation_arrete_l_envoi() {
+        let dir = std::env::temp_dir().join("dtx_cancel_src");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.txt"), b"data").unwrap();
+
+        let cancel = Arc::new(AtomicBool::new(true));
+        let rep = NullReporter;
+        let res = send(&dir, "127.0.0.1:1", "ABCD-2345", &Some(cancel), &rep);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err(), CANCELLED_MSG);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fenetre_pipeline_bornees() {
+        let o = Opts {
+            pipeline: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(o.pipeline.unwrap_or(8).clamp(1, 64), 1);
+        let o = Opts {
+            pipeline: Some(999),
+            ..Default::default()
+        };
+        assert_eq!(o.pipeline.unwrap_or(8).clamp(1, 64), 64);
     }
 }

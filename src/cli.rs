@@ -55,6 +55,9 @@ fn usage(exe: &str) {
     eprintln!("  --upnp        ouvre automatiquement la redirection de port sur la box (UPnP-IGD)");
     eprintln!("  --open-fw     ouvre la regle entrante dans le pare-feu Windows (necessite administrateur)");
     eprintln!("  --close-fw    ferme pare-feu + redirection UPnP apres le transfert");
+    eprintln!(
+        "  --pipeline N  nombre de requetes en vol (1-64, defaut 8) : plus = plus rapide sur LAN"
+    );
     eprintln!();
     eprintln!("Exemples :");
     eprintln!(
@@ -79,6 +82,15 @@ pub fn run(argv: &[String]) -> i32 {
             "--upnp" => opts.upnp = true,
             "--open-fw" | "--open-fw-after" => opts.open_fw = true,
             "--close-fw" | "--close-fw-after" => opts.close_fw_after = true,
+            "--pipeline" => {
+                match it.next().and_then(|v| v.parse::<usize>().ok()) {
+                    Some(n) => opts.pipeline = Some(n.clamp(1, 64)),
+                    None => {
+                        eprintln!("[erreur] --pipeline attend un nombre entre 1 et 64 (ex. --pipeline 16)");
+                        return 2;
+                    }
+                }
+            }
             "--code" => match it.next().and_then(|v| crate::crypto::norm_code(v)) {
                 Some(c) => code = Some(c),
                 None => {
@@ -116,7 +128,7 @@ pub fn run(argv: &[String]) -> i32 {
                     );
                     return 2;
                 };
-                transfer::send(Path::new(dir), addr, &code, &rep)
+                transfer::send(Path::new(dir), addr, &code, &None, &rep)
             }
             _ => {
                 usage(exe);
