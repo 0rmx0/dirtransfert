@@ -149,29 +149,8 @@ jobs:
       - name: List assets
         run: ls -la release-assets/
 
-      - name: Create or update release
+      - name: Build release notes from CHANGELOG.md
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          TAG="v${VERSION}"
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$TAG" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "DirTransfert ${VERSION}" \
-              --notes "Binaires de DirTransfert ${VERSION}.
-
-          ## Plateformes
-          - Linux amd64 / arm64 (tar.gz)
-          - Windows amd64 (zip)
-          - macOS amd64 / arm64 (tar.gz)
-          - Paquet Debian .deb (amd64)
-
-          Chaque archive est accompagnée de sa somme SHA-256 (fichier .sha256).
-
-          Voir https://github.com/0rmx0/dirtransfert pour la documentation." \
-              --latest \
-              release-assets/*
-          fi
+          python3 packaging/extract-release-notes.py "$VERSION" CHANGELOG.md release-notes.md
