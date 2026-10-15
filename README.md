@@ -6,7 +6,7 @@ Outil de transfert d'un répertoire complet (et ses sous-répertoires) entre deu
 
 - **GUI** (egui) par défaut, **CLI** derrière `--cli`
 - Windows, **Linux**, macOS
-- Zéro dépendance externe pour la logique métier : protocole, SHA-256 et UPnP écrits à la main (le chiffrement délègue aux crates RustCrypto `chacha20poly1305`, `argon2` et `rand`)
+- Zéro dépendance externe pour la logique métier : protocole et UPnP écrits à la main (le chiffrement délègue aux crates RustCrypto `chacha20poly1305`, `argon2`, `rand`, et le hachage au crate `sha2`)
 
 ## Fonctionnalités
 
@@ -17,6 +17,19 @@ Outil de transfert d'un répertoire complet (et ses sous-répertoires) entre deu
 - **Barre de progression** : octets transférés, débit Mo/s et pourcentage en temps réel.
 - **Sécurité des chemins** : les chemins relatifs sont filtrés (pas de `..`), pas de traversée de répertoire possible.
 - **Réception assistée** : affichage de l'IP locale et de l'IP publique (via UPnP), ouverture automatique du pare-feu Windows et redirection de port sur la box.
+
+## Binaires pré-compilés (Releases)
+
+Chaque version est publiée avec des binaires prêts à l'emploi sur la [page des releases](https://github.com/0rmx0/dirtransfert/releases) :
+
+- `DirTransfert-linux-amd64.tar.gz` / `DirTransfert-linux-arm64.tar.gz` (Linux x64 / ARM64)
+- `DirTransfert-windows-amd64.zip` (Windows x64)
+- `DirTransfert-macos-amd64.tar.gz` / `DirTransfert-macos-arm64.tar.gz` (macOS Intel / Apple Silicon)
+- `dirtransfer_<version>_amd64.deb` (paquet Debian/Ubuntu, avec raccourci applicatif)
+
+Chaque archive est accompagnée de sa somme SHA-256 (fichier `.sha256`).
+
+> **Important — incompatibilité 0.2.0** : le protocole de trame a changé en `0.2.0` (trames typées, transfert par morceaux). Une version `>= 0.2.0` **ne peut pas** échanger avec une version `< 0.2.0` : mettez à jour les deux côtés.
 
 ## Compilation
 
@@ -47,7 +60,8 @@ Une fenêtre s'ouvre avec :
 - la sélection du répertoire via un sélecteur de dossiers natif ;
 - l'adresse et le port de destination ;
 - les options UPnP / pare-feu en cases à cocher (côté réception) ;
-- le **code de jumelage** : saisi des deux côtés (généré automatiquement côté réception via le bouton « Générer »), il chiffre et authentifie le transfert ;
+- le **code de jumelage** : saisi des deux côtés (pré-généré au lancement côté réception, régénérable via le bouton « Générer »), il chiffre et authentifie le transfert ;
+- un bouton **Annuler** pour interrompre un transfert en cours ;
 - une barre de progression (octets, Mo/s, %) et un journal en direct.
 
 Côté réception, l'outil affiche l'adresse exacte à communiquer à l'émetteur (IP locale et IP publique via UPnP), et alerte en cas de CGNAT.
@@ -92,6 +106,7 @@ Le répertoire est recréé sous `/reception/donnees` avec toute son arborescenc
 | `--upnp` | Redirection de port automatique sur la box (UPnP-IGD) |
 | `--open-fw` | Règle entrante automatique dans le pare-feu Windows (exige une console administrateur) |
 | `--close-fw` | Ferme pare-feu + redirection UPnP après le transfert |
+| `--pipeline N` | Requêtes en vol simultanées (1-64, défaut 8) : augmentez sur LAN rapide |
 
 Si une étape échoue (box sans UPnP, console non administrateur), l'outil l'affiche clairement et continue — il indique alors quoi ouvrir manuellement.
 
@@ -125,7 +140,7 @@ Le code n'est jamais transmis sur le réseau : seule une preuve SHA-256 (hello a
 - `src/main.rs` — point d'entrée : GUI par défaut, CLI derrière `--cli`/`--console`.
 - `src/protocol.rs` — manifeste, encodage/décodage des messages, scan du répertoire source.
 - `src/crypto.rs` — chiffrement du flux : dérivation Argon2id, AEAD ChaCha20-Poly1305, poignée de main authentifiée, `SecureStream` (Read/Write chiffrés).
-- `src/sha256.rs` — implémentation SHA-256 en pur Rust (testée contre les vecteurs NIST).
+- `src/transfer.rs` — hachage des fichiers via le crate `sha2` (RustCrypto).
 - `src/upnp.rs` — client UPnP-IGD en pur Rust : découverte SSDP, description XML, appels SOAP `AddPortMapping`/`GetExternalIPAddress`/`DeletePortMapping`.
 - `src/firewall.rs` — règles `netsh advfirewall` pour le pare-feu Windows (règle entrante `DirTransfert`).
 - `src/transfer.rs` — cœur du transfert (send/receive) avec callbacks de progression, partagé par le CLI et la GUI.

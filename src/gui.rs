@@ -134,6 +134,8 @@ pub struct App {
     log: String,
     rx: Option<Receiver<Event>>,
     pick_rx: Option<Receiver<Option<PathBuf>>>,
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    pipeline: usize,
     show_about: bool,
 }
 
@@ -141,13 +143,13 @@ impl Default for App {
     fn default() -> Self {
         Self {
             mode: Mode::Receive,
+            code: crate::crypto::gen_code(),
             dir: String::new(),
             addr: format!("0.0.0.0:{}", crate::protocol::DEFAULT_PORT),
             out_dir: String::new(),
             upnp: true,
             open_fw: true,
             close_fw: true,
-            code: String::new(),
             code_error: None,
             running: false,
             error: None,
@@ -163,6 +165,8 @@ impl Default for App {
             log: String::new(),
             rx: None,
             pick_rx: None,
+            cancel: None,
+            pipeline: 8,
             show_about: false,
         }
     }
@@ -205,17 +209,22 @@ impl App {
         let addr = self.addr.clone();
         let out_dir = self.out_dir.clone();
         let code = self.code.clone();
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.cancel = Some(cancel.clone());
         let opts = Opts {
             upnp: self.upnp,
             open_fw: self.open_fw,
             close_fw_after: self.close_fw,
+            pipeline: Some(self.pipeline),
+            cancel: Some(cancel),
         };
         let tx_err = tx.clone();
+        let cancel_send = opts.cancel.clone();
         std::thread::spawn(move || {
             let res = match mode {
                 Mode::Send => {
                     let p = PathBuf::from(&dir);
-                    transfer::send(&p, &addr, &code, rep.as_ref())
+                    transfer::send(&p, &addr, &code, &cancel_send, rep.as_ref())
                 }
                 Mode::Receive => {
                     let p = PathBuf::from(&out_dir);
@@ -429,6 +438,13 @@ impl eframe::App for App {
                         "Fermer pare-feu + UPnP apres le transfert",
                     ),
                 );
+                ui.horizontal(|ui| {
+                    ui.label("Requetes en vol :");
+                    ui.add_enabled(
+                        enabled,
+                        egui::Slider::new(&mut self.pipeline, 1..=64).text("pipeline"),
+                    );
+                });
             }
             ui.separator();
 
@@ -457,6 +473,16 @@ impl eframe::App for App {
                 .clicked()
             {
                 self.start_transfer();
+            }
+            if self.running
+                && ui
+                    .button(egui::RichText::new("Annuler").color(ETRANGE))
+                    .clicked()
+            {
+                if let Some(c) = &self.cancel {
+                    c.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                self.log.push_str("annulation demandee...\n");
             }
 
             if let Some((ok, n, tot)) = self.finished {
