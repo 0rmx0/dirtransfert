@@ -430,7 +430,11 @@ impl eframe::App for App {
                 .collapsible(false)
                 .default_width(460.0)
                 .show(ui.ctx(), |ui| {
-                    ui.heading("DirTransfert 0.1.0");
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .max_height(ui.ctx().input(|i| i.viewport().monitor_size.map(|s| s.y).unwrap_or(600.0)) * 0.7)
+                        .show(ui, |ui| {
+                    ui.heading(format!("DirTransfert {}", env!("CARGO_PKG_VERSION")));
                     ui.separator();
                     ui.label(egui::RichText::new("Outil de transfert de répertoire décentralisé — TCP chiffré (ChaCha20-Poly1305), code de jumelage, vérification SHA-256 et reprise.").color(BRUME));
                     ui.add_space(8.0);
@@ -460,6 +464,7 @@ impl eframe::App for App {
                     if ui.button("Fermer").clicked() {
                         close = true;
                     }
+                        });
                 });
             if close {
                 self.show_about = false;
