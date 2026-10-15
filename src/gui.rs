@@ -311,9 +311,25 @@ impl eframe::App for App {
                 .request_repaint_after(std::time::Duration::from_millis(200));
         }
 
+        egui::Panel::bottom("rmx_footer")
+            .frame(
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(10, 4))
+                    .corner_radius(egui::CornerRadius::same(10))
+                    .fill(egui::Color32::TRANSPARENT)
+            )
+            .show(ui, |ui| {
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new("IkwnaW5mb3JtYXRpb24sIGMnZXN0IGxlIHBvdXZvaXIuIE1haXMgY29tbWUgdG91dCBwb3V2b2lyLCBpbCB5IGEgY2V1eCBxdWkgdmV1bGVudCBsZSBnYXJkZXIgcG91ciBldXguIiAtIEFhcm9uIFN3YXJ0eg==").monospace().color(OMBRE));
+                });
+            });
+
         egui::CentralPanel::default().show(ui, |ui| {
             ui.heading("DirTransfert");
-            if ui.button(egui::RichText::new("À propos").color(SPECTRE)).clicked() {
+            if ui
+                .button(egui::RichText::new("À propos").color(SPECTRE))
+                .clicked()
+            {
                 self.show_about = true;
             }
             ui.separator();
@@ -327,14 +343,25 @@ impl eframe::App for App {
             let enabled = !self.running;
             ui.horizontal(|ui| {
                 ui.label("Code de jumelage :");
-                ui.add_enabled(enabled, egui::TextEdit::singleline(&mut self.code).desired_width(140.0).hint_text("XXXX-XXXX"));
-                if self.mode == Mode::Receive && ui.add_enabled(enabled, egui::Button::new("Generer")).clicked() {
+                ui.add_enabled(
+                    enabled,
+                    egui::TextEdit::singleline(&mut self.code)
+                        .desired_width(140.0)
+                        .hint_text("XXXX-XXXX"),
+                );
+                if self.mode == Mode::Receive
+                    && ui
+                        .add_enabled(enabled, egui::Button::new("Generer"))
+                        .clicked()
+                {
                     self.code = crate::crypto::gen_code();
                 }
                 self.code_error = match crate::crypto::norm_code(&self.code) {
                     Some(_) => None,
                     None if self.code.trim().is_empty() => None,
-                    None => Some("code invalide : 8 caracteres sans O/0/1/I (ex. ABCD-2345)".to_string()),
+                    None => Some(
+                        "code invalide : 8 caracteres sans O/0/1/I (ex. ABCD-2345)".to_string(),
+                    ),
                 };
             });
             if let Some(e) = &self.code_error {
@@ -344,44 +371,107 @@ impl eframe::App for App {
             if self.mode == Mode::Send {
                 ui.horizontal(|ui| {
                     ui.label("Repertoire a envoyer :");
-                    ui.add_enabled(enabled, egui::TextEdit::singleline(&mut self.dir).desired_width(320.0));
-                    if ui.add_enabled(enabled && self.pick_rx.is_none(), egui::Button::new("Parcourir...")).clicked() {
+                    ui.add_enabled(
+                        enabled,
+                        egui::TextEdit::singleline(&mut self.dir).desired_width(320.0),
+                    );
+                    if ui
+                        .add_enabled(
+                            enabled && self.pick_rx.is_none(),
+                            egui::Button::new("Parcourir..."),
+                        )
+                        .clicked()
+                    {
                         self.browse();
                     }
                 });
                 ui.horizontal(|ui| {
                     ui.label("Destination (hote:port) :");
-                    ui.add_enabled(enabled, egui::TextEdit::singleline(&mut self.addr).desired_width(320.0));
+                    ui.add_enabled(
+                        enabled,
+                        egui::TextEdit::singleline(&mut self.addr).desired_width(320.0),
+                    );
                 });
             } else {
                 ui.horizontal(|ui| {
                     ui.label("Dossier de reception :");
-                    ui.add_enabled(enabled, egui::TextEdit::singleline(&mut self.out_dir).desired_width(320.0));
-                    if ui.add_enabled(enabled && self.pick_rx.is_none(), egui::Button::new("Parcourir...")).clicked() {
+                    ui.add_enabled(
+                        enabled,
+                        egui::TextEdit::singleline(&mut self.out_dir).desired_width(320.0),
+                    );
+                    if ui
+                        .add_enabled(
+                            enabled && self.pick_rx.is_none(),
+                            egui::Button::new("Parcourir..."),
+                        )
+                        .clicked()
+                    {
                         self.browse();
                     }
                 });
                 ui.horizontal(|ui| {
                     ui.label("Ecoute sur :");
-                    ui.add_enabled(enabled, egui::TextEdit::singleline(&mut self.addr).desired_width(320.0));
+                    ui.add_enabled(
+                        enabled,
+                        egui::TextEdit::singleline(&mut self.addr).desired_width(320.0),
+                    );
                 });
                 ui.separator();
-                ui.add_enabled(enabled, egui::Checkbox::new(&mut self.upnp, "Redirection de port UPnP automatique (box)"));
-                ui.add_enabled(enabled, egui::Checkbox::new(&mut self.open_fw, "Ouvrir la regle pare-feu Windows (necessite administrateur)"));
-                ui.add_enabled(enabled, egui::Checkbox::new(&mut self.close_fw, "Fermer pare-feu + UPnP apres le transfert"));
+                ui.add_enabled(
+                    enabled,
+                    egui::Checkbox::new(
+                        &mut self.upnp,
+                        "Redirection de port UPnP automatique (box)",
+                    ),
+                );
+                ui.add_enabled(
+                    enabled,
+                    egui::Checkbox::new(
+                        &mut self.open_fw,
+                        "Ouvrir la regle pare-feu Windows (necessite administrateur)",
+                    ),
+                );
+                ui.add_enabled(
+                    enabled,
+                    egui::Checkbox::new(
+                        &mut self.close_fw,
+                        "Fermer pare-feu + UPnP apres le transfert",
+                    ),
+                );
                 ui.horizontal(|ui| {
                     ui.label("Requetes en vol :");
-                    ui.add_enabled(enabled, egui::Slider::new(&mut self.pipeline, 1..=64).text("pipeline"));
+                    ui.add_enabled(
+                        enabled,
+                        egui::Slider::new(&mut self.pipeline, 1..=64).text("pipeline"),
+                    );
                 });
             }
             ui.separator();
 
-            let can_start = enabled && crate::crypto::norm_code(&self.code).is_some() && match self.mode {
-                Mode::Send => !self.dir.trim().is_empty() && transfer::parse_endpoint(&self.addr).is_some(),
-                Mode::Receive => !self.out_dir.trim().is_empty() && transfer::parse_endpoint(&self.addr).is_some(),
+            let can_start = enabled
+                && crate::crypto::norm_code(&self.code).is_some()
+                && match self.mode {
+                    Mode::Send => {
+                        !self.dir.trim().is_empty()
+                            && transfer::parse_endpoint(&self.addr).is_some()
+                    }
+                    Mode::Receive => {
+                        !self.out_dir.trim().is_empty()
+                            && transfer::parse_endpoint(&self.addr).is_some()
+                    }
+                };
+            let start_label = if self.mode == Mode::Send {
+                "Demarrer l'envoi"
+            } else {
+                "Demarrer la reception"
             };
-            let start_label = if self.mode == Mode::Send { "Demarrer l'envoi" } else { "Demarrer la reception" };
-            if ui.add_enabled(can_start, egui::Button::new(egui::RichText::new(start_label).color(SPECTRE))).clicked() {
+            if ui
+                .add_enabled(
+                    can_start,
+                    egui::Button::new(egui::RichText::new(start_label).color(SPECTRE)),
+                )
+                .clicked()
+            {
                 self.start_transfer();
             }
             if self.running
@@ -397,9 +487,18 @@ impl eframe::App for App {
 
             if let Some((ok, n, tot)) = self.finished {
                 if ok {
-                    ui.colored_label(TERMINAL, format!("Transfert termine : {}/{} fichiers valides, checksums verifies", n, tot));
+                    ui.colored_label(
+                        TERMINAL,
+                        format!(
+                            "Transfert termine : {}/{} fichiers valides, checksums verifies",
+                            n, tot
+                        ),
+                    );
                 } else {
-                    ui.colored_label(ETRANGE, "Transfert incomplet — voir le journal ci-dessous, relancez pour reprendre");
+                    ui.colored_label(
+                        ETRANGE,
+                        "Transfert incomplet — voir le journal ci-dessous, relancez pour reprendre",
+                    );
                 }
             }
             if let Some(e) = &self.error {
@@ -407,7 +506,11 @@ impl eframe::App for App {
             }
 
             if self.scanning {
-                let frac = if self.scan_total > 0 { self.scan_done as f32 / self.scan_total as f32 } else { 0.0 };
+                let frac = if self.scan_total > 0 {
+                    self.scan_done as f32 / self.scan_total as f32
+                } else {
+                    0.0
+                };
                 ui.add(egui::ProgressBar::new(frac).text(format!(
                     "Analyse : {}/{} fichiers — {}",
                     self.scan_done, self.scan_total, self.scan_current
@@ -415,7 +518,11 @@ impl eframe::App for App {
             }
 
             if self.total > 0 || self.running {
-                let frac = if self.total > 0 { self.pct as f32 / 100.0 } else { 0.0 };
+                let frac = if self.total > 0 {
+                    self.pct as f32 / 100.0
+                } else {
+                    0.0
+                };
                 ui.add(egui::ProgressBar::new(frac).show_percentage().text(format!(
                     "{} / {} — {:.1} Mo/s",
                     transfer::human(self.sent),
@@ -426,23 +533,24 @@ impl eframe::App for App {
 
             ui.separator();
             ui.label("Journal :");
-            egui::Frame::new().fill(egui::Color32::BLACK).corner_radius(RMX_ROUNDING).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
-                egui::ScrollArea::vertical().auto_shrink([false, true]).show(ui, |ui| {
-                    ui.add(
-                        egui::TextEdit::multiline(&mut self.log)
-                            .font(egui::TextStyle::Monospace)
-                            .text_color(TERMINAL)
-                            .desired_width(f32::INFINITY)
-                            .desired_rows(12)
-                            .interactive(false),
-                    );
+            egui::Frame::new()
+                .fill(egui::Color32::BLACK)
+                .corner_radius(RMX_ROUNDING)
+                .inner_margin(egui::Margin::same(10))
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::TextEdit::multiline(&mut self.log)
+                                    .font(egui::TextStyle::Monospace)
+                                    .text_color(TERMINAL)
+                                    .desired_width(f32::INFINITY)
+                                    .desired_rows(12)
+                                    .interactive(false),
+                            );
+                        });
                 });
-            });
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("IkwnaW5mb3JtYXRpb24sIGMnZXN0IGxlIHBvdXZvaXIuIE1haXMgY29tbWUgdG91dCBwb3V2b2lyLCBpbCB5IGEgY2V1eCBxdWkgdmV1bGVudCBsZSBnYXJkZXIgcG91ciBldXguIiAtIEFhcm9uIFN3YXJ0eg==").monospace().color(OMBRE));
-            });
         });
 
         if self.show_about {
