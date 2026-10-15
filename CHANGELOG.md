@@ -2,6 +2,18 @@
 
 Les versions notables de DirTransfert. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 
+## [0.3.0] - 2026-10-15
+
+### Ajouté
+- Bouton **Annuler** dans la GUI et jeton d'annulation dans le moteur (envoi et réception, vérifié entre chaque morceau).
+- Pipeline configurable : option `--pipeline N` (CLI) et slider « Requêtes en vol » (GUI), 1-64, défaut 8.
+- Code de jumelage pré-généré au lancement en mode réception.
+- CHANGELOG.md ; section Releases dans le README avec note d'incompatibilité inter-versions.
+
+### Modifié
+- Pare-feu Linux : message d'erreur actionnable (`ufw` / `firewall-cmd`) avec le port réel.
+- GUI : le texte chiffré du bas est réservé via `Panel::bottom` (plus de superposition avec le journal).
+
 ## [0.2.0] - 2026-10-15
 
 ### Sécurité

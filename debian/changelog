@@ -1,3 +1,13 @@
+dirtransfert (0.3.0-1) unstable; urgency=medium
+
+  * Cancel button (GUI) and cancellation token in send/receive engine.
+  * Configurable request pipeline (--pipeline / GUI slider, 1-64, default 8).
+  * Pre-generated pairing code on receive start.
+  * Actionable Linux firewall message (ufw/firewall-cmd).
+  * GUI footer reserved via bottom panel; docs updated (Releases, CHANGELOG).
+
+ -- 0rmx0 <0rmx0@users.noreply.github.com>  $(date -u '+%a, %d %b %Y %H:%M:%S +0000')
+
 dirtransfert (0.2.0-1) unstable; urgency=medium
 
   * Security: direction byte in nonce to prevent cross-direction nonce reuse.
