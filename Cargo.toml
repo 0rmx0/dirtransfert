@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "Outil de transfert de repertoire via TCP chiffre (ChaCha20-Poly1305, code de jumelage) avec verification SHA-256 et reprise"
 license = "MIT"
+rust-version = "1.75"
+keywords = ["transfer", "file-sharing", "encrypted", "tcp", "gui"]
+categories = ["command-line-utilities", "gui"]
 
 [[bin]]
 name = "DirTransfert"
