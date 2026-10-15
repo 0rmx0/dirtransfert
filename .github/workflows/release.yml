@@ -152,31 +152,5 @@ jobs:
       - name: Build release notes from CHANGELOG.md
         env:
           VERSION: ${{ steps.ver.outputs.version }}
-        run: >-
-          python3 -c
-          "import re,sys;
-          v='${VERSION}';
-          t=open('CHANGELOG.md',encoding='utf-8').read();
-          m=re.search('## \\['+re.escape(v)+'\\].*?(?=\\n## \\[$)',t,re.S);
-          s=m.group(0) if m else '';
-          s=s or ('## '+v+'\\n\\n- Voir le CHANGELOG.md du depot pour les changements de cette version.');
-          a='\\n\\n---\\n\\n## Plateformes\\n\\n- Linux amd64 / arm64 (tar.gz)\\n- Windows amd64 (zip)\\n- macOS amd64 / arm64 (tar.gz)\\n- Paquet Debian .deb (amd64)\\n\\nChaque archive est accompagnee de sa somme SHA-256 (fichier .sha256).\\n\\nVoir le README du depot pour la documentation complete.';
-          open('release-notes.md','w',encoding='utf-8').write(s+a)"
-
-      - name: Create or update release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          TAG="v${VERSION}"
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md
-          else
-            gh release create "$TAG" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "DirTransfert ${VERSION}" \
-              --notes-file release-notes.md \
-              --latest \
-              release-assets/*
-          fi
+          python3 packaging/extract-release-notes.py "$VERSION" CHANGELOG.md release-notes.md
