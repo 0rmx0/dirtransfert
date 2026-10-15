@@ -93,8 +93,11 @@ pub fn remove_firewall_rule() -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-pub fn ensure_firewall_rule(_port: u16) -> Result<bool, String> {
-    Err("gestion du pare-feu disponible uniquement sous Windows".into())
+pub fn ensure_firewall_rule(port: u16) -> Result<bool, String> {
+    Err(format!(
+        "ouverture automatique du pare-feu disponible uniquement sous Windows ; ouvrez le port manuellement : sudo ufw allow {}/tcp  (ou firewall-cmd --add-port={}/tcp --permanent)",
+        port, port
+    ))
 }
 
 #[cfg(not(windows))]
