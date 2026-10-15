@@ -110,10 +110,11 @@ jobs:
       - name: Install cargo-deb
         run: cargo install cargo-deb --locked
 
+      - name: Build binary
+        run: cargo build --release
+
       - name: Build .deb
         run: cargo deb --no-build --output dist/
-        env:
-          CARGO_TARGET_DIR: target
 
       - name: Prepare artifact
         run: |
