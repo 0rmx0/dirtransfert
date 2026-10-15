@@ -1,3 +1,13 @@
+dirtransfert (0.2.0-1) unstable; urgency=medium
+
+  * Security: direction byte in nonce to prevent cross-direction nonce reuse.
+  * Chunked streaming transfer (1 MiB frames), no more full files in RAM.
+  * Pipelined file requests, explicit OK/FAIL final status, I/O timeouts.
+  * Removed hand-rolled SHA-256 in favor of the sha2 crate.
+  * CI workflow (fmt, clippy, tests).
+
+ -- 0rmx0 <0rmx0@users.noreply.github.com>  $(date -u '+%a, %d %b %Y %H:%M:%S +0000')
+
 dirtransfert (0.1.0-1) unstable; urgency=medium
 
   * Initial Debian packaging.

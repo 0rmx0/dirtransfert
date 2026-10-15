@@ -1,6 +1,6 @@
 [package]
 name = "dirtransfer"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Outil de transfert de repertoire via TCP chiffre (ChaCha20-Poly1305, code de jumelage) avec verification SHA-256 et reprise"
 license = "MIT"
