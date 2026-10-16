@@ -626,22 +626,55 @@ pub fn launch() -> Result<(), String> {
         width: ICON_W,
         height: ICON_H,
     };
-    let native = eframe::NativeOptions {
-        renderer: eframe::Renderer::Wgpu,
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([640.0, 560.0])
-            .with_icon(std::sync::Arc::new(icon)),
-        ..Default::default()
+    let viewport = egui::ViewportBuilder::default()
+        .with_inner_size([640.0, 560.0])
+        .with_icon(std::sync::Arc::new(icon));
+
+    let run = |renderer: eframe::Renderer| -> Result<(), String> {
+        let native = eframe::NativeOptions {
+            renderer,
+            viewport: viewport.clone(),
+            ..Default::default()
+        };
+        eframe::run_native(
+            "DirTransfert",
+            native,
+            Box::new(|cc| {
+                cc.egui_ctx.set_visuals(rmx_visuals());
+                Ok(Box::new(App::default()))
+            }),
+        )
+        .map_err(|e| format!("lancement de la fenetre (renderer {:?}) : {}", renderer, e))
     };
-    eframe::run_native(
-        "DirTransfert",
-        native,
-        Box::new(|cc| {
-            cc.egui_ctx.set_visuals(rmx_visuals());
-            Ok(Box::new(App::default()))
-        }),
-    )
-    .map_err(|e| format!("lancement de la fenetre : {}", e))
+
+    let log_step = |msg: &str| {
+        let path = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))
+            .unwrap_or_else(|| std::path::PathBuf::from("DirTransfert-erreur.log"));
+        let _ = std::fs::write(
+            &path,
+            format!("DirTransfert v{}\n{}\n", env!("CARGO_PKG_VERSION"), msg),
+        );
+    };
+
+    log_step("lancement de la GUI : tentative renderer wgpu");
+    let result = run(eframe::Renderer::Wgpu);
+    if result.is_ok() {
+        return Ok(());
+    }
+    log_step("renderer wgpu echoue, tentative glow (OpenGL)");
+    let fallback = run(eframe::Renderer::Glow);
+    if fallback.is_err() {
+        let msg = format!(
+            "wgpu : {}\nglow : {}",
+            result.unwrap_err(),
+            fallback.unwrap_err()
+        );
+        log_step(&format!("echec de tous les renderers\n{}", msg));
+        return Err(msg);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
