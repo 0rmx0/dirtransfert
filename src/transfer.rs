@@ -231,18 +231,12 @@ pub fn receive(
     let ip_pub = ip_pub.as_deref().filter(|p| !p.is_empty());
     if !ip_locale.is_empty() {
         match crate::link::encode_alt(&ip_locale, port, code, ip_pub) {
-            Ok(l) => rep.log(format!(
-                "code de connexion a saisir sur l'emetteur : {}",
-                l
-            )),
+            Ok(l) => rep.log(format!("code de connexion a saisir sur l'emetteur : {}", l)),
             Err(e) => rep.log(format!("code de connexion : {}", e)),
         }
     } else if let Some(p) = ip_pub {
         match crate::link::encode(p, port, code) {
-            Ok(l) => rep.log(format!(
-                "code de connexion a saisir sur l'emetteur : {}",
-                l
-            )),
+            Ok(l) => rep.log(format!("code de connexion a saisir sur l'emetteur : {}", l)),
             Err(e) => rep.log(format!("code de connexion : {}", e)),
         }
     } else {
@@ -445,13 +439,7 @@ mod fallback_tests {
             fn done(&self, _ok: bool, _n: usize, _tot: usize) {}
         }
         let rep = LogCollector;
-        let s = connect_with_fallback(
-            "192.0.2.1",
-            port,
-            Some("127.0.0.1"),
-            &rep,
-        )
-        .unwrap();
+        let s = connect_with_fallback("192.0.2.1", port, Some("127.0.0.1"), &rep).unwrap();
         drop(s);
         std::thread::sleep(Duration::from_millis(50));
         assert!(accepted.load(Ordering::Relaxed));

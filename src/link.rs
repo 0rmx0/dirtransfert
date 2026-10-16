@@ -109,7 +109,8 @@ pub fn encode_alt(
         Some(h) if !h.is_empty() && h.len() <= MAX_HOST => Some(h),
         _ => None,
     };
-    let mut payload = Vec::with_capacity(3 + host.len() + alt.map(|h| 1 + h.len()).unwrap_or(0) + 10);
+    let mut payload =
+        Vec::with_capacity(3 + host.len() + alt.map(|h| 1 + h.len()).unwrap_or(0) + 10);
     payload.push(LINK_VERSION);
     payload.push(host.len() as u8);
     payload.push(if alt.is_some() { ALT_HOST } else { ALT_NONE });
@@ -201,8 +202,8 @@ pub fn decode(input: &str) -> Result<LinkInfo, String> {
     let cb: [u8; 8] = body[off + 2..off + 10]
         .try_into()
         .map_err(|_| "code de jumelage tronque".to_string())?;
-    let code_str = String::from_utf8(cb.to_vec())
-        .map_err(|_| "code de jumelage illisible".to_string())?;
+    let code_str =
+        String::from_utf8(cb.to_vec()).map_err(|_| "code de jumelage illisible".to_string())?;
     let code = crate::crypto::norm_code(&code_str).ok_or("code de jumelage invalide")?;
     Ok(LinkInfo {
         host,
