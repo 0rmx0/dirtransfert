@@ -14,6 +14,15 @@ enum Event {
         total: usize,
         current: String,
     },
+    File {
+        rel: String,
+        done: usize,
+        total: usize,
+    },
+    DirInfo {
+        files: usize,
+        bytes: u64,
+    },
     Progress {
         sent: u64,
         total: u64,
@@ -72,6 +81,28 @@ fn rmx_visuals() -> egui::Visuals {
     v
 }
 
+fn card_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(SURFACE)
+        .corner_radius(RMX_ROUNDING)
+        .stroke(egui::Stroke::new(
+            RMX_STROKE,
+            egui::Color32::from_rgb(0x33, 0x33, 0x33),
+        ))
+        .inner_margin(egui::Margin::same(14))
+}
+
+fn field_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(egui::Color32::from_rgb(0x18, 0x18, 0x18))
+        .corner_radius(RMX_ROUNDING)
+        .stroke(egui::Stroke::new(
+            RMX_STROKE,
+            egui::Color32::from_rgb(0x3A, 0x3A, 0x3A),
+        ))
+        .inner_margin(egui::Margin::same(10))
+}
+
 struct GuiReporter {
     tx: Sender<Event>,
 }
@@ -85,6 +116,13 @@ impl Reporter for GuiReporter {
             done,
             total,
             current: current.to_string(),
+        });
+    }
+    fn file(&self, rel: &str, done: usize, total: usize) {
+        let _ = self.tx.send(Event::File {
+            rel: rel.to_string(),
+            done,
+            total,
         });
     }
     fn progress(&self, sent: u64, total: u64, speed_mbps: f64, pct: u64) {
@@ -110,8 +148,18 @@ enum Mode {
     Receive,
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Screen {
+    Home,
+    Prepare,
+    Running,
+    Finished,
+    Interrupted,
+}
+
 pub struct App {
     mode: Mode,
+    screen: Screen,
     dir: String,
     addr: String,
     out_dir: String,
@@ -131,18 +179,27 @@ pub struct App {
     scan_done: usize,
     scan_total: usize,
     scan_current: String,
+    dir_files: usize,
+    dir_bytes: u64,
+    cur_file: String,
+    files_done: usize,
+    files_total: usize,
+    started_at: Option<std::time::Instant>,
+    finished_at: Option<std::time::Instant>,
     log: String,
     rx: Option<Receiver<Event>>,
     pick_rx: Option<Receiver<Option<PathBuf>>>,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     pipeline: usize,
     show_about: bool,
+    prescanning: bool,
 }
 
 impl Default for App {
     fn default() -> Self {
         Self {
             mode: Mode::Receive,
+            screen: Screen::Home,
             code: crate::crypto::gen_code(),
             dir: String::new(),
             addr: format!("0.0.0.0:{}", crate::protocol::DEFAULT_PORT),
@@ -162,14 +219,26 @@ impl Default for App {
             scan_done: 0,
             scan_total: 0,
             scan_current: String::new(),
+            dir_files: 0,
+            dir_bytes: 0,
+            cur_file: String::new(),
+            files_done: 0,
+            files_total: 0,
+            started_at: None,
+            finished_at: None,
             log: String::new(),
             rx: None,
             pick_rx: None,
             cancel: None,
             pipeline: 8,
             show_about: false,
+            prescanning: false,
         }
     }
+}
+
+fn fmt_duration(secs: u64) -> String {
+    format!("{} min {:02} s", secs / 60, secs % 60)
 }
 
 impl App {
@@ -187,6 +256,42 @@ impl App {
         });
     }
 
+    fn prescan_dir(&mut self) {
+        let path = PathBuf::from(&self.dir);
+        if !path.is_dir() {
+            self.dir_files = 0;
+            self.dir_bytes = 0;
+            self.prescanning = false;
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.dir_files = 0;
+        self.dir_bytes = 0;
+        self.prescanning = true;
+        self.rx = Some(rx);
+        std::thread::spawn(move || {
+            let res = crate::protocol::scan_dir(&path, |done, total, current| {
+                let _ = tx.send(Event::Scan {
+                    done,
+                    total,
+                    current: current.to_string(),
+                });
+            });
+            match res {
+                Ok(files) => {
+                    let bytes = files.iter().map(|f| f.size).sum();
+                    let _ = tx.send(Event::DirInfo {
+                        files: files.len(),
+                        bytes,
+                    });
+                }
+                Err(e) => {
+                    let _ = tx.send(Event::Log(format!("[analyse] {e}")));
+                }
+            }
+        });
+    }
+
     fn start_transfer(&mut self) {
         let (tx, rx) = std::sync::mpsc::channel();
         self.rx = Some(rx);
@@ -201,7 +306,14 @@ impl App {
         self.scan_done = 0;
         self.scan_total = 0;
         self.scan_current = String::new();
+        self.cur_file = String::new();
+        self.files_done = 0;
+        self.files_total = 0;
+        self.started_at = Some(std::time::Instant::now());
+        self.finished_at = None;
+        self.prescanning = false;
         self.log.clear();
+        self.screen = Screen::Running;
 
         let rep = Arc::new(GuiReporter { tx: tx.clone() });
         let mode = self.mode;
@@ -241,6 +353,37 @@ impl App {
             }
         });
     }
+
+    fn reset_to_home(&mut self) {
+        self.screen = Screen::Home;
+        self.running = false;
+        self.finished = None;
+        self.error = None;
+        self.rx = None;
+        self.cancel = None;
+        self.sent = 0;
+        self.total = 0;
+        self.pct = 0;
+        self.speed_mbps = 0.0;
+        self.cur_file.clear();
+        self.files_done = 0;
+        self.files_total = 0;
+        self.scanning = false;
+        self.log.clear();
+    }
+
+    fn open_in_explorer(path: &str) {
+        if path.is_empty() {
+            return;
+        }
+        #[cfg(target_os = "windows")]
+        let res = std::process::Command::new("explorer").arg(path).spawn();
+        #[cfg(target_os = "macos")]
+        let res = std::process::Command::new("open").arg(path).spawn();
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let res = std::process::Command::new("xdg-open").arg(path).spawn();
+        let _ = res.map(|_| ());
+    }
 }
 
 impl eframe::App for App {
@@ -261,6 +404,17 @@ impl eframe::App for App {
                     self.scan_total = total;
                     self.scan_current = current;
                 }
+                Ok(Event::File { rel, done, total }) => {
+                    self.cur_file = rel;
+                    self.files_done = done;
+                    self.files_total = total;
+                }
+                Ok(Event::DirInfo { files, bytes }) => {
+                    self.dir_files = files;
+                    self.dir_bytes = bytes;
+                    self.scanning = false;
+                    self.prescanning = false;
+                }
                 Ok(Event::Progress {
                     sent,
                     total,
@@ -279,12 +433,24 @@ impl eframe::App for App {
                 }) => {
                     self.running = false;
                     self.scanning = false;
+                    self.prescanning = false;
+                    self.finished_at = Some(std::time::Instant::now());
                     self.finished = Some((ok, files_ok, files_total));
+                    self.screen = if ok {
+                        Screen::Finished
+                    } else {
+                        Screen::Interrupted
+                    };
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.running = false;
-                    self.rx = None;
+                    if self.prescanning {
+                        self.prescanning = false;
+                        self.scanning = false;
+                    }
+                    if !self.running {
+                        self.rx = None;
+                    }
                     break;
                 }
             }
@@ -297,6 +463,9 @@ impl eframe::App for App {
                         Mode::Receive => self.out_dir = p.display().to_string(),
                     }
                     self.pick_rx = None;
+                    if self.mode == Mode::Send {
+                        self.prescan_dir();
+                    }
                 }
                 Ok(None) => self.pick_rx = None,
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
@@ -306,7 +475,7 @@ impl eframe::App for App {
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => self.pick_rx = None,
             }
         }
-        if self.running {
+        if self.running || self.scanning || self.prescanning {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(200));
         }
@@ -316,7 +485,7 @@ impl eframe::App for App {
                 egui::Frame::new()
                     .inner_margin(egui::Margin::symmetric(10, 4))
                     .corner_radius(egui::CornerRadius::same(10))
-                    .fill(egui::Color32::TRANSPARENT)
+                    .fill(egui::Color32::TRANSPARENT),
             )
             .show(ui, |ui| {
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
@@ -324,234 +493,21 @@ impl eframe::App for App {
                 });
             });
 
-        egui::CentralPanel::default().show(ui, |ui| {
-            ui.heading("DirTransfert");
-            if ui
-                .button(egui::RichText::new("À propos").color(SPECTRE))
-                .clicked()
-            {
-                self.show_about = true;
-            }
-            ui.separator();
-
-            ui.horizontal(|ui| {
-                let _ = ui.selectable_value(&mut self.mode, Mode::Send, "Envoyer");
-                let _ = ui.selectable_value(&mut self.mode, Mode::Receive, "Recevoir");
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().inner_margin(egui::Margin::same(20)))
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        match self.screen {
+                            Screen::Home => self.ui_home(ui),
+                            Screen::Prepare => self.ui_prepare(ui),
+                            Screen::Running => self.ui_running(ui),
+                            Screen::Finished => self.ui_finished(ui),
+                            Screen::Interrupted => self.ui_interrupted(ui),
+                        }
+                    });
             });
-            ui.separator();
-
-            let enabled = !self.running;
-            ui.horizontal(|ui| {
-                ui.label("Code de jumelage :");
-                ui.add_enabled(
-                    enabled,
-                    egui::TextEdit::singleline(&mut self.code)
-                        .desired_width(140.0)
-                        .hint_text("XXXX-XXXX"),
-                );
-                if self.mode == Mode::Receive
-                    && ui
-                        .add_enabled(enabled, egui::Button::new("Generer"))
-                        .clicked()
-                {
-                    self.code = crate::crypto::gen_code();
-                }
-                self.code_error = match crate::crypto::norm_code(&self.code) {
-                    Some(_) => None,
-                    None if self.code.trim().is_empty() => None,
-                    None => Some(
-                        "code invalide : 8 caracteres sans O/0/1/I (ex. ABCD-2345)".to_string(),
-                    ),
-                };
-            });
-            if let Some(e) = &self.code_error {
-                ui.colored_label(egui::Color32::from_rgb(0xFF, 0x6A, 0x4D), e);
-            }
-            ui.separator();
-            if self.mode == Mode::Send {
-                ui.horizontal(|ui| {
-                    ui.label("Repertoire a envoyer :");
-                    ui.add_enabled(
-                        enabled,
-                        egui::TextEdit::singleline(&mut self.dir).desired_width(320.0),
-                    );
-                    if ui
-                        .add_enabled(
-                            enabled && self.pick_rx.is_none(),
-                            egui::Button::new("Parcourir..."),
-                        )
-                        .clicked()
-                    {
-                        self.browse();
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Destination (hote:port) :");
-                    ui.add_enabled(
-                        enabled,
-                        egui::TextEdit::singleline(&mut self.addr).desired_width(320.0),
-                    );
-                });
-            } else {
-                ui.horizontal(|ui| {
-                    ui.label("Dossier de reception :");
-                    ui.add_enabled(
-                        enabled,
-                        egui::TextEdit::singleline(&mut self.out_dir).desired_width(320.0),
-                    );
-                    if ui
-                        .add_enabled(
-                            enabled && self.pick_rx.is_none(),
-                            egui::Button::new("Parcourir..."),
-                        )
-                        .clicked()
-                    {
-                        self.browse();
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Ecoute sur :");
-                    ui.add_enabled(
-                        enabled,
-                        egui::TextEdit::singleline(&mut self.addr).desired_width(320.0),
-                    );
-                });
-                ui.separator();
-                ui.add_enabled(
-                    enabled,
-                    egui::Checkbox::new(
-                        &mut self.upnp,
-                        "Redirection de port UPnP automatique (box)",
-                    ),
-                );
-                ui.add_enabled(
-                    enabled,
-                    egui::Checkbox::new(
-                        &mut self.open_fw,
-                        "Ouvrir la regle pare-feu Windows (necessite administrateur)",
-                    ),
-                );
-                ui.add_enabled(
-                    enabled,
-                    egui::Checkbox::new(
-                        &mut self.close_fw,
-                        "Fermer pare-feu + UPnP apres le transfert",
-                    ),
-                );
-                ui.horizontal(|ui| {
-                    ui.label("Requetes en vol :");
-                    ui.add_enabled(
-                        enabled,
-                        egui::Slider::new(&mut self.pipeline, 1..=64).text("pipeline"),
-                    );
-                });
-            }
-            ui.separator();
-
-            let can_start = enabled
-                && crate::crypto::norm_code(&self.code).is_some()
-                && match self.mode {
-                    Mode::Send => {
-                        !self.dir.trim().is_empty()
-                            && transfer::parse_endpoint(&self.addr).is_some()
-                    }
-                    Mode::Receive => {
-                        !self.out_dir.trim().is_empty()
-                            && transfer::parse_endpoint(&self.addr).is_some()
-                    }
-                };
-            let start_label = if self.mode == Mode::Send {
-                "Demarrer l'envoi"
-            } else {
-                "Demarrer la reception"
-            };
-            if ui
-                .add_enabled(
-                    can_start,
-                    egui::Button::new(egui::RichText::new(start_label).color(SPECTRE)),
-                )
-                .clicked()
-            {
-                self.start_transfer();
-            }
-            if self.running
-                && ui
-                    .button(egui::RichText::new("Annuler").color(ETRANGE))
-                    .clicked()
-            {
-                if let Some(c) = &self.cancel {
-                    c.store(true, std::sync::atomic::Ordering::Relaxed);
-                }
-                self.log.push_str("annulation demandee...\n");
-            }
-
-            if let Some((ok, n, tot)) = self.finished {
-                if ok {
-                    ui.colored_label(
-                        TERMINAL,
-                        format!(
-                            "Transfert termine : {}/{} fichiers valides, checksums verifies",
-                            n, tot
-                        ),
-                    );
-                } else {
-                    ui.colored_label(
-                        ETRANGE,
-                        "Transfert incomplet — voir le journal ci-dessous, relancez pour reprendre",
-                    );
-                }
-            }
-            if let Some(e) = &self.error {
-                ui.colored_label(ETRANGE, e);
-            }
-
-            if self.scanning {
-                let frac = if self.scan_total > 0 {
-                    self.scan_done as f32 / self.scan_total as f32
-                } else {
-                    0.0
-                };
-                ui.add(egui::ProgressBar::new(frac).text(format!(
-                    "Analyse : {}/{} fichiers — {}",
-                    self.scan_done, self.scan_total, self.scan_current
-                )));
-            }
-
-            if self.total > 0 || self.running {
-                let frac = if self.total > 0 {
-                    self.pct as f32 / 100.0
-                } else {
-                    0.0
-                };
-                ui.add(egui::ProgressBar::new(frac).show_percentage().text(format!(
-                    "{} / {} — {:.1} Mo/s",
-                    transfer::human(self.sent),
-                    transfer::human(self.total),
-                    self.speed_mbps
-                )));
-            }
-
-            ui.separator();
-            ui.label("Journal :");
-            egui::Frame::new()
-                .fill(egui::Color32::BLACK)
-                .corner_radius(RMX_ROUNDING)
-                .inner_margin(egui::Margin::same(10))
-                .show(ui, |ui| {
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false, true])
-                        .show(ui, |ui| {
-                            ui.add(
-                                egui::TextEdit::multiline(&mut self.log)
-                                    .font(egui::TextStyle::Monospace)
-                                    .text_color(TERMINAL)
-                                    .desired_width(f32::INFINITY)
-                                    .desired_rows(12)
-                                    .interactive(false),
-                            );
-                        });
-                });
-        });
 
         if self.show_about {
             let mut close = false;
@@ -604,6 +560,597 @@ impl eframe::App for App {
     }
 }
 
+impl App {
+    fn ui_header(&mut self, ui: &mut egui::Ui, title: &str, subtitle: &str) {
+        ui.horizontal(|ui| {
+            ui.heading("DirTransfert");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .button(egui::RichText::new("À propos").color(SPECTRE))
+                    .clicked()
+                {
+                    self.show_about = true;
+                }
+            });
+        });
+        ui.add_space(6.0);
+        ui.label(egui::RichText::new(title).size(22.0).color(ENCRE).strong());
+        ui.label(egui::RichText::new(subtitle).color(BRUME));
+        ui.add_space(10.0);
+    }
+
+    fn ui_home(&mut self, ui: &mut egui::Ui) {
+        self.ui_header(
+            ui,
+            "Transfert direct PC à PC, sans serveur",
+            "Des milliers de fichiers, un seul dossier. Choisissez le rôle de ce PC pour commencer.",
+        );
+
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.set_min_width(ui.available_width() / 2.0 - 10.0);
+                card_frame().show(ui, |ui| {
+                    ui.set_min_size(egui::vec2(0.0, 110.0));
+                    ui.label(egui::RichText::new("Envoyer").size(19.0).color(ENCRE).strong());
+                    ui.label(
+                        egui::RichText::new(
+                            "Choisissez un dossier et connectez-vous au PC qui le reçoit.",
+                        )
+                        .color(BRUME),
+                    );
+                    ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                        if ui
+                            .button(egui::RichText::new("Choisir ce rôle").color(SPECTRE))
+                            .clicked()
+                        {
+                            self.mode = Mode::Send;
+                            self.screen = Screen::Prepare;
+                        }
+                    });
+                });
+            });
+            ui.vertical(|ui| {
+                ui.set_min_width(ui.available_width() - 10.0);
+                card_frame().show(ui, |ui| {
+                    ui.set_min_size(egui::vec2(0.0, 110.0));
+                    ui.label(egui::RichText::new("Recevoir").size(19.0).color(ENCRE).strong());
+                    ui.label(
+                        egui::RichText::new(
+                            "Choisissez où enregistrer les fichiers et partagez votre code.",
+                        )
+                        .color(BRUME),
+                    );
+                    ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                        if ui
+                            .button(egui::RichText::new("Choisir ce rôle").color(SPECTRE))
+                            .clicked()
+                        {
+                            self.mode = Mode::Receive;
+                            self.screen = Screen::Prepare;
+                        }
+                    });
+                });
+            });
+        });
+
+        ui.add_space(12.0);
+        ui.label(
+            egui::RichText::new(
+                "Sur le même réseau ou à distance : les fichiers passent directement entre vos deux PC, sans serveur tiers.",
+            )
+            .color(BRUME),
+        );
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("ChaCha20-Poly1305 · chiffrement").color(TERMINAL));
+            ui.label(egui::RichText::new("SHA-256 · intégrité").color(TERMINAL));
+        });
+        ui.label(
+            egui::RichText::new(
+                "Le chiffrement protège le contenu de bout en bout. L'intégrité vérifie que les fichiers reçus sont identiques.",
+            )
+            .color(OMBRE),
+        );
+    }
+
+    fn ui_code_boxes(&mut self, ui: &mut egui::Ui, enabled: bool) {
+        let clean: String = self
+            .code
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect();
+        ui.horizontal(|ui| {
+            for (i, ch) in clean.chars().take(crate::crypto::CODE_LEN).enumerate() {
+                if i == 4 {
+                    ui.label(
+                        egui::RichText::new("-")
+                            .size(24.0)
+                            .color(OMBRE),
+                    );
+                }
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(0x18, 0x18, 0x18))
+                    .corner_radius(RMX_ROUNDING)
+                    .stroke(egui::Stroke::new(RMX_STROKE, SPECTRE))
+                    .inner_margin(egui::Margin::symmetric(8, 4))
+                    .show(ui, |ui| {
+                        ui.set_min_size(egui::vec2(20.0, 22.0));
+                        ui.label(egui::RichText::new(ch.to_string()).size(20.0).color(ENCRE));
+                    });
+            }
+            let _ = enabled;
+        });
+    }
+
+    fn ui_prepare(&mut self, ui: &mut egui::Ui) {
+        let enabled = !self.running;
+        match self.mode {
+            Mode::Send => self.ui_header(
+                ui,
+                "Envoyer un dossier",
+                "Renseignez les informations partagées par le PC qui reçoit.",
+            ),
+            Mode::Receive => self.ui_header(
+                ui,
+                "Recevoir un dossier",
+                "Préparez ce PC, puis partagez une adresse et le code à l'expéditeur.",
+            ),
+        }
+
+        ui.horizontal(|ui| {
+            if ui
+                .button(egui::RichText::new("← Accueil").color(SPECTRE))
+                .clicked()
+            {
+                self.screen = Screen::Home;
+                self.rx = None;
+                self.prescanning = false;
+                self.scanning = false;
+            }
+        });
+        ui.add_space(8.0);
+
+        card_frame().show(ui, |ui| {
+            if self.mode == Mode::Send {
+                ui.label(egui::RichText::new("Dossier à envoyer").color(SPECTRE));
+                field_frame().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.add_enabled(
+                            enabled,
+                            egui::TextEdit::singleline(&mut self.dir)
+                                .desired_width(ui.available_width() - 120.0)
+                                .hint_text("C:\\..."),
+                        );
+                        if ui
+                            .add_enabled(
+                                enabled && self.pick_rx.is_none(),
+                                egui::Button::new("Choisir un dossier"),
+                            )
+                            .clicked()
+                        {
+                            self.browse();
+                        }
+                    });
+                });
+                if self.prescanning || self.scanning {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Analyse : {}/{} — {}",
+                            self.scan_done, self.scan_total, self.scan_current
+                        ))
+                        .color(BRUME),
+                    );
+                } else if self.dir_files > 0 {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} fichiers · {} · sous-dossiers inclus",
+                            self.dir_files,
+                            transfer::human(self.dir_bytes)
+                        ))
+                        .color(TERMINAL),
+                    );
+                }
+                ui.add_space(10.0);
+
+                ui.label(
+                    egui::RichText::new("Adresse du PC destinataire (IP:port)").color(SPECTRE),
+                );
+                field_frame().show(ui, |ui| {
+                    ui.add_enabled(
+                        enabled,
+                        egui::TextEdit::singleline(&mut self.addr)
+                            .desired_width(f32::INFINITY)
+                            .hint_text("192.0.2.24:45822"),
+                    );
+                });
+                ui.label(
+                    egui::RichText::new(
+                        "Sur le même réseau, utilisez l'adresse locale du PC qui reçoit. Sinon, son adresse publique.",
+                    )
+                    .color(OMBRE),
+                );
+                ui.add_space(10.0);
+            } else {
+                ui.label(egui::RichText::new("Enregistrer les fichiers dans").color(SPECTRE));
+                field_frame().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.add_enabled(
+                            enabled,
+                            egui::TextEdit::singleline(&mut self.out_dir)
+                                .desired_width(ui.available_width() - 120.0)
+                                .hint_text("D:\\Transferts"),
+                        );
+                        if ui
+                            .add_enabled(
+                                enabled && self.pick_rx.is_none(),
+                                egui::Button::new("Choisir un dossier"),
+                            )
+                            .clicked()
+                        {
+                            self.browse();
+                        }
+                    });
+                });
+                ui.add_space(10.0);
+
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(enabled, egui::Button::new("Générer"))
+                        .clicked()
+                    {
+                        self.code = crate::crypto::gen_code();
+                    }
+                    if ui.add_enabled(enabled, egui::Button::new("Copier")).clicked() {
+                        ui.ctx().copy_text(
+                            crate::crypto::norm_code(&self.code)
+                                .unwrap_or_else(|| self.code.clone()),
+                        );
+                    }
+                });
+                ui.checkbox(&mut self.upnp, "Ouvrir la redirection de port (UPnP)");
+                ui.checkbox(&mut self.open_fw, "Ouvrir le pare-feu Windows (administrateur)");
+                ui.checkbox(&mut self.close_fw, "Refermer pare-feu + UPnP après le transfert");
+                ui.add_enabled(
+                    enabled,
+                    egui::Slider::new(&mut self.pipeline, 1..=64).text("requêtes en vol"),
+                );
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new("En attente de connexion...")
+                        .color(ETRANGE),
+                );
+                ui.label(
+                    egui::RichText::new(
+                        "Même réseau : adresse locale. À distance : adresse publique et port à ouvrir sur le routeur (UPnP ou redirection).",
+                    )
+                    .color(OMBRE),
+                );
+                ui.label(
+                    egui::RichText::new(
+                        "CGNAT : la connexion distante peut être bloquée. Windows peut demander les droits administrateur pour le pare-feu.",
+                    )
+                    .color(OMBRE),
+                );
+            }
+
+            ui.add_space(10.0);
+            ui.label(egui::RichText::new("Code d'appairage").color(SPECTRE));
+            self.ui_code_boxes(ui, enabled);
+            ui.horizontal(|ui| {
+                ui.add_enabled(
+                    enabled,
+                    egui::TextEdit::singleline(&mut self.code)
+                        .desired_width(160.0)
+                        .hint_text("ABCD-2345"),
+                        )
+                        ;
+                if ui
+                    .add_enabled(enabled, egui::Button::new("Copier le code"))
+                    .clicked()
+                {
+                    ui.ctx().copy_text(
+                        crate::crypto::norm_code(&self.code)
+                            .unwrap_or_else(|| self.code.clone()),
+                    );
+                }
+                if self.mode == Mode::Receive
+                    && ui
+                        .add_enabled(enabled, egui::Button::new("Générer"))
+                        .clicked()
+                {
+                    self.code = crate::crypto::gen_code();
+                }
+            });
+            ui.label(
+                egui::RichText::new(
+                    "Recopiez le code affiché sur l'autre PC pour associer les deux appareils.",
+                )
+                .color(OMBRE),
+            );
+            self.code_error = match crate::crypto::norm_code(&self.code) {
+                Some(_) => None,
+                None if self.code.trim().is_empty() => None,
+                None => Some(
+                    "code invalide : 8 caractères sans O/0/1/I (ex. ABCD-2345)".to_string(),
+                ),
+            };
+            if let Some(e) = &self.code_error {
+                ui.colored_label(egui::Color32::from_rgb(0xFF, 0x6A, 0x4D), e);
+            }
+            ui.label(
+                egui::RichText::new("Chiffrement de bout en bout · intégrité vérifiée à la réception")
+                    .color(BRUME),
+            );
+            ui.label(
+                egui::RichText::new("ChaCha20-Poly1305 · chiffrement   SHA-256 · intégrité")
+                    .color(TERMINAL),
+            );
+        });
+
+        ui.add_space(12.0);
+        let can_start = enabled
+            && crate::crypto::norm_code(&self.code).is_some()
+            && match self.mode {
+                Mode::Send => {
+                    !self.dir.trim().is_empty() && transfer::parse_endpoint(&self.addr).is_some()
+                }
+                Mode::Receive => {
+                    !self.out_dir.trim().is_empty()
+                        && transfer::parse_endpoint(&self.addr).is_some()
+                }
+            };
+        let start_label = if self.mode == Mode::Send {
+            "Démarrer le transfert"
+        } else {
+            "Démarrer la réception"
+        };
+        if ui
+            .add_enabled(
+                can_start,
+                egui::Button::new(egui::RichText::new(start_label).color(SPECTRE).size(16.0)),
+            )
+            .clicked()
+        {
+            self.start_transfer();
+        }
+    }
+
+    fn ui_running(&mut self, ui: &mut egui::Ui) {
+        let title = match self.mode {
+            Mode::Send => format!(
+                "Transfert en cours — {} → {}",
+                self.dir,
+                self.addr
+            ),
+            Mode::Receive => format!("Réception en cours — écoute sur {}", self.addr),
+        };
+        self.ui_header(ui, "Transfert en cours", &title);
+
+        card_frame().show(ui, |ui| {
+            if self.scanning {
+                let frac = if self.scan_total > 0 {
+                    self.scan_done as f32 / self.scan_total as f32
+                } else {
+                    0.0
+                };
+                ui.add(
+                    egui::ProgressBar::new(frac).text(format!(
+                        "Analyse : {}/{} fichiers — {}",
+                        self.scan_done, self.scan_total, self.scan_current
+                    )),
+                );
+            }
+            let frac = if self.total > 0 {
+                self.pct as f32 / 100.0
+            } else {
+                0.0
+            };
+            let bar = egui::ProgressBar::new(frac)
+                .text(format!(
+                    "{} / {} — {:.1} Mo/s",
+                    transfer::human(self.sent),
+                    transfer::human(self.total),
+                    self.speed_mbps
+                ))
+                .desired_height(22.0);
+            ui.add(bar);
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(format!("{} %", self.pct))
+                        .size(26.0)
+                        .color(ENCRE)
+                        .strong(),
+                );
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} / {}",
+                        transfer::human(self.sent),
+                        transfer::human(self.total)
+                    ))
+                    .color(BRUME),
+                );
+                ui.label(egui::RichText::new(format!("{:.1} Mo/s", self.speed_mbps)).color(BRUME));
+                if self.files_total > 0 {
+                    ui.label(
+                        egui::RichText::new(format!("{}/{} fichiers", self.files_done, self.files_total))
+                            .color(BRUME),
+                    );
+                }
+            });
+            if !self.cur_file.is_empty() {
+                ui.label(egui::RichText::new("Fichier en cours").color(SPECTRE));
+                ui.label(egui::RichText::new(&self.cur_file).monospace().color(ENCRE));
+            }
+            ui.label(
+                egui::RichText::new(
+                    "Transfert interrompu ? Relancez : seuls les fichiers manquants seront retransférés.",
+                )
+                .color(OMBRE),
+            );
+        });
+
+        ui.add_space(12.0);
+        ui.label(egui::RichText::new("JOURNAL DU TRANSFERT").color(SPECTRE));
+        egui::Frame::new()
+            .fill(egui::Color32::BLACK)
+            .corner_radius(RMX_ROUNDING)
+            .inner_margin(egui::Margin::same(10))
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut self.log)
+                                .font(egui::TextStyle::Monospace)
+                                .text_color(TERMINAL)
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(10)
+                                .interactive(false),
+                        );
+                    });
+            });
+
+        ui.add_space(8.0);
+        if ui
+            .button(egui::RichText::new("Annuler").color(ETRANGE))
+            .clicked()
+        {
+            if let Some(c) = &self.cancel {
+                c.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            self.log.push_str("annulation demandée...\n");
+        }
+    }
+
+    fn ui_finished(&mut self, ui: &mut egui::Ui) {
+        let (_, files_ok, files_total) = self.finished.unwrap_or((true, 0, 0));
+        let duration = match (self.started_at, self.finished_at) {
+            (Some(a), Some(b)) => fmt_duration(b.duration_since(a).as_secs()),
+            _ => String::new(),
+        };
+        self.ui_header(
+            ui,
+            "Transfert terminé",
+            "Votre dossier est arrivé. Tous les fichiers ont été reçus et vérifiés.",
+        );
+
+        card_frame().show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new(files_ok.to_string()).size(28.0).color(ENCRE).strong());
+                    ui.label(egui::RichText::new("fichiers reçus").color(BRUME));
+                });
+                ui.separator();
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new(transfer::human(self.total))
+                            .size(28.0)
+                            .color(ENCRE)
+                            .strong(),
+                    );
+                    ui.label(egui::RichText::new("taille totale").color(BRUME));
+                });
+                ui.separator();
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new(duration).size(28.0).color(ENCRE).strong());
+                    ui.label(egui::RichText::new("durée du transfert").color(BRUME));
+                });
+            });
+            let _ = files_total;
+            ui.add_space(6.0);
+            ui.label(egui::RichText::new("Dossier enregistré").color(SPECTRE));
+            let dest = if self.mode == Mode::Send {
+                self.addr.clone()
+            } else {
+                self.out_dir.clone()
+            };
+            ui.label(egui::RichText::new(&dest).monospace().color(ENCRE));
+            ui.label(egui::RichText::new("SHA-256 vérifié").color(TERMINAL));
+            ui.label(
+                egui::RichText::new("ChaCha20-Poly1305 · chiffrement   SHA-256 · intégrité")
+                    .color(TERMINAL),
+            );
+        });
+
+        ui.add_space(12.0);
+        ui.horizontal(|ui| {
+            if ui
+                .button(egui::RichText::new("Retour à l'accueil").color(SPECTRE))
+                .clicked()
+            {
+                self.reset_to_home();
+            }
+            if self.mode == Mode::Receive && ui.button("Ouvrir le dossier").clicked() {
+                let dir = self.out_dir.clone();
+                Self::open_in_explorer(&dir);
+            }
+        });
+    }
+
+    fn ui_interrupted(&mut self, ui: &mut egui::Ui) {
+        self.ui_header(
+            ui,
+            "Connexion interrompue",
+            "Le transfert a été arrêté. Les fichiers déjà reçus sont conservés.",
+        );
+
+        card_frame().show(ui, |ui| {
+            ui.label(egui::RichText::new("Reprise").color(SPECTRE));
+            ui.label(
+                egui::RichText::new(
+                    "Transfert interrompu ? Relancez : seuls les fichiers manquants seront retransférés.",
+                )
+                .color(BRUME),
+            );
+            ui.add_space(6.0);
+            if let Some(e) = &self.error {
+                ui.colored_label(egui::Color32::from_rgb(0xFF, 0x6A, 0x4D), e);
+            }
+        });
+
+        ui.add_space(8.0);
+        ui.label(egui::RichText::new("JOURNAL DU TRANSFERT").color(SPECTRE));
+        egui::Frame::new()
+            .fill(egui::Color32::BLACK)
+            .corner_radius(RMX_ROUNDING)
+            .inner_margin(egui::Margin::same(10))
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut self.log)
+                                .font(egui::TextStyle::Monospace)
+                                .text_color(TERMINAL)
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(8)
+                                .interactive(false),
+                        );
+                    });
+            });
+
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            if ui
+                .button(egui::RichText::new("Modifier la connexion").color(SPECTRE))
+                .clicked()
+            {
+                self.screen = Screen::Prepare;
+                self.running = false;
+                self.finished = None;
+                self.rx = None;
+                self.cancel = None;
+            }
+            if ui
+                .button(egui::RichText::new("Réessayer").color(TERMINAL))
+                .clicked()
+            {
+                self.start_transfer();
+            }
+        });
+    }
+}
+
 fn block_on<F: Future>(fut: F) -> F::Output {
     struct NoopWake;
     impl std::task::Wake for NoopWake {
@@ -627,7 +1174,7 @@ pub fn launch() -> Result<(), String> {
         height: ICON_H,
     };
     let viewport = egui::ViewportBuilder::default()
-        .with_inner_size([640.0, 560.0])
+        .with_inner_size([720.0, 640.0])
         .with_icon(std::sync::Arc::new(icon));
 
     let run = |renderer: eframe::Renderer| -> Result<(), String> {
@@ -724,6 +1271,7 @@ mod tests {
     fn default_app_state_coherent() {
         let a = App::default();
         assert_eq!(a.mode, Mode::Receive);
+        assert_eq!(a.screen, Screen::Home);
         assert!(a.upnp && a.open_fw && a.close_fw);
         assert!(!a.running);
         assert!(transfer::parse_endpoint(&a.addr).is_some());
@@ -737,5 +1285,11 @@ mod tests {
         assert!(transfer::parse_endpoint("sansport").is_none());
         assert!(transfer::parse_endpoint(":47500").is_none());
         assert!(transfer::parse_endpoint("hote:pasunnombre").is_none());
+    }
+
+    #[test]
+    fn duree_formatee() {
+        assert_eq!(fmt_duration(238), "3 min 58 s");
+        assert_eq!(fmt_duration(0), "0 min 00 s");
     }
 }

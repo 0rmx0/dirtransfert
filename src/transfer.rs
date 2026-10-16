@@ -148,6 +148,7 @@ fn check_cancel(cancel: &Option<Arc<AtomicBool>>) -> Result<(), String> {
 pub trait Reporter: Send + Sync {
     fn log(&self, msg: String);
     fn scan(&self, _done: usize, _total: usize, _current: &str) {}
+    fn file(&self, _rel: &str, _files_done: usize, _files_total: usize) {}
     fn progress(&self, sent: u64, total: u64, speed_mbps: f64, pct: u64);
     fn done(&self, ok: bool, files_ok: usize, files_total: usize);
 }
@@ -156,6 +157,7 @@ pub struct NullReporter;
 impl Reporter for NullReporter {
     fn log(&self, _msg: String) {}
     fn scan(&self, _d: usize, _t: usize, _c: &str) {}
+    fn file(&self, _r: &str, _d: usize, _t: usize) {}
     fn progress(&self, _s: u64, _t: u64, _sp: f64, _p: u64) {}
     fn done(&self, _ok: bool, _n: usize, _tot: usize) {}
 }
@@ -347,6 +349,7 @@ pub fn receive(
             failures.push(format!("{} : {}", entry.rel_path, e));
         } else {
             verified.insert(entry.rel_path.clone());
+            rep.file(&entry.rel_path, verified.len(), manifest.files.len());
         }
         if !pending.is_empty() {
             let next = pending.pop_front().unwrap();
@@ -412,6 +415,7 @@ pub fn receive(
         ));
     }
     rep.log("transfert integre, checksums verifies".to_string());
+    rep.file("", manifest.files.len(), manifest.files.len());
     Ok(())
 }
 
@@ -492,6 +496,7 @@ pub fn send(
         }
         write_kind(&mut stream, KIND_META, b"").map_err(|e| format!("fin de {} : {}", rel, e))?;
         remaining -= 1;
+            rep.file(&rel, manifest.files.len() - remaining, manifest.files.len());
     }
 
     let fin = read_msg(&mut stream).map_err(|e| format!("protocole : {}", e))?;
