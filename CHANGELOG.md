@@ -2,6 +2,16 @@
 
 Les versions notables de DirTransfert. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 
+
+## [0.3.1] - 2026-10-16
+
+### Ajouté
+- Option `--render=dx12|dx11|vulkan|gl|glow` pour choisir le backend graphique de la GUI (utile en RDP/RDS).
+- Option `--log` / `--verbose` : active l'écriture du fichier `DirTransfert-erreur.log` (désactivé par défaut).
+- Dialogue d'erreur natif en cas d'échec du lancement de la GUI (plus de fermeture silencieuse).
+
+### Modifié
+- Renderer GUI par défaut : wgpu (Direct3D/Vulkan/Metal selon la plateforme) avec repli automatique vers glow (OpenGL) en cas d'échec. Aucun backend n'est forcé.
 ## [0.3.0] - 2026-10-15
 
 ### Ajouté
