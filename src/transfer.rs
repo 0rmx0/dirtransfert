@@ -530,7 +530,7 @@ pub fn send(
         return Err(format!("adresse \"{}\" invalide (attendu hote:port)", addr));
     };
     let alt_host = alt_addr
-        .and_then(|a| parse_endpoint(a))
+        .and_then(parse_endpoint)
         .map(|(h, _)| h)
         .filter(|h| h != &host);
     let sock = connect_with_fallback(&host, port, alt_host.as_deref(), rep)?;
