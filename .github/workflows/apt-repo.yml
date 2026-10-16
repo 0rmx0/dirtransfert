@@ -1,0 +1,88 @@
+name: APT repo
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish APT repository to gh-pages
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout gh-pages branch (or orphan)
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: apt-repo
+        continue-on-error: true
+
+      - name: Init repo layout
+        run: |
+          mkdir -p apt-repo
+          cd apt-repo
+          if [ ! -d .git ]; then
+            git init -b gh-pages .
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+          fi
+          mkdir -p pool/main/d/dirtransfert
+          mkdir -p dists/stable/main/binary-amd64
+          mkdir -p dists/stable/main/binary-arm64
+
+      - name: Download .deb files from latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir apt-repo/pool/main/d/dirtransfert --clobber
+
+      - name: Build package indexes
+        run: |
+          cd apt-repo
+          for arch in amd64 arm64; do
+            dpkg-scanpackages --arch $arch -m pool/main/d/dirtransfert \
+              > dists/stable/main/binary-$arch/Packages 2>/dev/null || true
+            gzip -9fk dists/stable/main/binary-$arch/Packages
+          done
+
+      - name: Import signing key
+        env:
+          APT_GPG_KEY: ${{ secrets.APT_GPG_KEY }}
+        run: |
+          echo "$APT_GPG_KEY" | gpg --batch --import || {
+            echo "::error::Secret APT_GPG_KEY manquant ou invalide (clé GPG privee ASCII-armoree)."
+            exit 1
+          }
+
+      - name: Sign Release files
+        run: |
+          cd apt-repo
+          KEYID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/{print $5; exit}')
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin="DirTransfert" \
+            -o APT::FTPArchive::Release::Suite="stable" \
+            -o APT::FTPArchive::Release::Codename="stable" \
+            -o APT::FTPArchive::Release::Architectures="amd64 arm64" \
+            -o APT::FTPArchive::Release::Components="main" \
+            release dists/stable > dists/stable/Release
+          gpg --batch --yes --local-user "$KEYID" --clearsign -o dists/stable/Release.gpg dists/stable/Release
+          gpg --batch --yes --local-user "$KEYID" --armor --detach-sign -o dists/stable/Release.asc dists/stable/Release
+          gpg --batch --armor --export "$KEYID" > dirtransfert.asc
+
+      - name: Commit and push to gh-pages
+        run: |
+          cd apt-repo
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Aucun changement, depot APT deja a jour."
+            exit 0
+          fi
+          git commit -m "Mise a jour du depot APT ($(date -u '+%Y-%m-%d %H:%M:%S UTC'))"
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY.git" || true
+          git push origin HEAD:gh-pages --force

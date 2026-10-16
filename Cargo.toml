@@ -43,5 +43,7 @@ assets = [
     ["packaging/dirtransfert.desktop", "usr/share/applications/dirtransfert.desktop", "644"],
 ]
 
+[package.metadata.wix]
+
 [package.metadata.winresource]
 icon = "assets/icon.ico"

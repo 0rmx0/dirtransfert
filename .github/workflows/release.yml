@@ -128,9 +128,38 @@ jobs:
           name: dirtransfert-deb
           path: dist/*
 
+  msi:
+    name: Build .msi (windows-amd64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-wix
+        run: cargo install cargo-wix --locked
+      - name: Build .msi
+        run: cargo wix --nocapture
+      - name: Get version
+        id: ver
+        shell: bash
+        run: echo "version=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')" >> "$GITHUB_OUTPUT"
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          f=$(ls target/wix/*.msi | head -1)
+          cp "$f" "dist/DirTransfert-${{ steps.ver.outputs.version }}-x64.msi"
+          cd dist
+          sha256sum "DirTransfert-${{ steps.ver.outputs.version }}-x64.msi" > "DirTransfert-${{ steps.ver.outputs.version }}-x64.msi.sha256"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dirtransfert-msi
+          path: dist/*
+
   release:
     name: Create release
-    needs: [build, deb]
+    needs: [build, deb, msi]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch'
     steps:
