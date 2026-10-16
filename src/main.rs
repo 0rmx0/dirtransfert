@@ -16,6 +16,9 @@ fn main() {
         eprintln!("[panique] {}", msg);
     }));
     let argv: Vec<String> = std::env::args().collect();
+    if std::env::var_os("WGPU_BACKEND").is_none() {
+        std::env::set_var("WGPU_BACKEND", "dx12");
+    }
     if argv.iter().any(|a| a == "--cli" || a == "--console") {
         let code = dirtransfer::cli::run(&argv);
         std::process::exit(code);
