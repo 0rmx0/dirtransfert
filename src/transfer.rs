@@ -218,23 +218,38 @@ pub fn receive(
     let ip_locale = upnp::local_ip();
     if !ip_locale.is_empty() {
         rep.log(format!("IP locale de ce PC : {}", ip_locale));
-        if let Ok(l) = crate::link::encode(&ip_locale, port, code) {
-            rep.log(format!("code de connexion (meme reseau) : {}", l));
-        }
     }
-    match upnp::get_external_ip() {
-        Ok(ip_pub) => {
-            rep.log(format!("IP publique de la box : {}", ip_pub));
-            if let Ok(l) = crate::link::encode(&ip_pub, port, code) {
-                rep.log(format!("code de connexion (via Internet) : {}", l));
-            }
-            if ip_pub.starts_with("100.") && !ip_pub.starts_with("100.128.") {
-                rep.log("attention : IP en plage 100.64-127.x.x = CGNAT operateur, l'UPnP ne suffira pas, utilisez un VPN (Tailscale/WireGuard)".to_string());
-            }
+    let ip_pub = upnp::get_external_ip().ok().filter(|p| {
+        if p.starts_with("100.") && !p.starts_with("100.128.") {
+            rep.log("attention : IP en plage 100.64-127.x.x = CGNAT operateur, l'UPnP ne suffira pas, utilisez un VPN (Tailscale/WireGuard)".to_string());
+            false
+        } else {
+            rep.log(format!("IP publique de la box : {}", p));
+            true
         }
-        Err(e) => {
-            rep.log(format!("IP publique : {} (via Internet, trouvez l'IP de la box sur son interface d'administration)", e));
+    });
+    let ip_pub = ip_pub.as_deref().filter(|p| !p.is_empty());
+    if !ip_locale.is_empty() {
+        match crate::link::encode_alt(&ip_locale, port, code, ip_pub) {
+            Ok(l) => rep.log(format!(
+                "code de connexion a saisir sur l'emetteur : {}",
+                l
+            )),
+            Err(e) => rep.log(format!("code de connexion : {}", e)),
         }
+    } else if let Some(p) = ip_pub {
+        match crate::link::encode(p, port, code) {
+            Ok(l) => rep.log(format!(
+                "code de connexion a saisir sur l'emetteur : {}",
+                l
+            )),
+            Err(e) => rep.log(format!("code de connexion : {}", e)),
+        }
+    } else {
+        rep.log(format!(
+            "IP publique indisponible ; sur l'emetteur, renseignez : {}:{}",
+            ip_locale, port
+        ));
     }
     let listener = TcpListener::bind(addr).map_err(|e| format!("liaison de {} : {}", addr, e))?;
     rep.log(format!("en ecoute sur {}", addr));
@@ -407,9 +422,88 @@ pub fn receive(
     Ok(())
 }
 
+#[cfg(test)]
+mod fallback_tests {
+    use super::*;
+
+    #[test]
+    fn fallback_local_puis_internet() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let accepted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let acc = accepted.clone();
+        std::thread::spawn(move || {
+            if let Ok((s, _)) = listener.accept() {
+                acc.store(true, Ordering::Relaxed);
+                drop(s);
+            }
+        });
+        struct LogCollector;
+        impl Reporter for LogCollector {
+            fn log(&self, _m: String) {}
+            fn progress(&self, _s: u64, _t: u64, _sp: f64, _p: u64) {}
+            fn done(&self, _ok: bool, _n: usize, _tot: usize) {}
+        }
+        let rep = LogCollector;
+        let s = connect_with_fallback(
+            "192.0.2.1",
+            port,
+            Some("127.0.0.1"),
+            &rep,
+        )
+        .unwrap();
+        drop(s);
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(accepted.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn fallback_tout_echoue() {
+        struct LogCollector;
+        impl Reporter for LogCollector {
+            fn log(&self, _m: String) {}
+            fn progress(&self, _s: u64, _t: u64, _sp: f64, _p: u64) {}
+            fn done(&self, _ok: bool, _n: usize, _tot: usize) {}
+        }
+        let r = connect_with_fallback("127.0.0.1", 1, Some("127.0.0.1"), &LogCollector);
+        assert!(r.is_err());
+    }
+}
+
+fn connect_with_fallback(
+    host: &str,
+    port: u16,
+    alt_host: Option<&str>,
+    rep: &dyn Reporter,
+) -> Result<TcpStream, String> {
+    let mut candidates: Vec<(String, &str)> = vec![(host.to_string(), "local")];
+    if let Some(alt) = alt_host.filter(|a| !a.is_empty() && *a != host) {
+        candidates.push((alt.to_string(), "Internet"));
+    }
+    let mut last_err = None;
+    for (h, kind) in &candidates {
+        let dest = format!("{}:{}", h, port);
+        match TcpStream::connect(&dest) {
+            Ok(s) => {
+                rep.log(format!("connexion etablie a {} ({})", dest, kind));
+                return Ok(s);
+            }
+            Err(e) => {
+                rep.log(format!("echec de connexion a {} ({}) : {}", dest, kind, e));
+                last_err = Some(format!("{} ({}) : {}", dest, kind, e));
+            }
+        }
+    }
+    Err(format!(
+        "impossible de se connecter (local puis Internet) : {}",
+        last_err.unwrap_or_else(|| format!("{}:{}", host, port))
+    ))
+}
+
 pub fn send(
     dir: &Path,
     addr: &str,
+    alt_addr: Option<&str>,
     code: &str,
     cancel: &Option<Arc<AtomicBool>>,
     rep: &dyn Reporter,
@@ -444,10 +538,21 @@ pub fn send(
         addr
     ));
 
-    let sock = TcpStream::connect(addr).map_err(|e| format!("connexion a {} : {}", addr, e))?;
+    let Some((host, port)) = parse_endpoint(addr) else {
+        return Err(format!("adresse \"{}\" invalide (attendu hote:port)", addr));
+    };
+    let alt_host = alt_addr
+        .and_then(|a| parse_endpoint(a))
+        .map(|(h, _)| h)
+        .filter(|h| h != &host);
+    let sock = connect_with_fallback(&host, port, alt_host.as_deref(), rep)?;
+    let connected_to = sock
+        .peer_addr()
+        .map(|a| a.to_string())
+        .unwrap_or_else(|_| addr.to_string());
     sock.set_nodelay(true).ok();
     let mut stream = SecureStream::client_handshake(sock, code)
-        .map_err(|e| format!("poignee de main chiffree avec {} : {}", addr, e))?;
+        .map_err(|e| format!("poignee de main chiffree avec {} : {}", connected_to, e))?;
     stream.set_timeouts(Some(IO_TIMEOUT), Some(IO_TIMEOUT));
     rep.log("flux chiffre (ChaCha20-Poly1305, code de jumelage verifie)".to_string());
 
@@ -564,6 +669,7 @@ mod tests {
         send(
             &src_dir,
             &format!("127.0.0.1:{}", port),
+            None,
             "ABCD-2345",
             &None,
             &rep,
@@ -609,7 +715,7 @@ mod cancel_tests {
 
         let cancel = Arc::new(AtomicBool::new(true));
         let rep = NullReporter;
-        let res = send(&dir, "127.0.0.1:1", "ABCD-2345", &Some(cancel), &rep);
+        let res = send(&dir, "127.0.0.1:1", None, "ABCD-2345", &Some(cancel), &rep);
         assert!(res.is_err());
         assert_eq!(res.unwrap_err(), CANCELLED_MSG);
 

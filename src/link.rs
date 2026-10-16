@@ -4,11 +4,14 @@ const LINK_PREFIX: &str = "DTX1";
 const LINK_VERSION: u8 = 1;
 const B32_ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const MAX_HOST: usize = 255;
+const ALT_NONE: u8 = 0;
+const ALT_HOST: u8 = 1;
 
 pub struct LinkInfo {
     pub host: String,
     pub port: u16,
     pub code: String,
+    pub alt_host: Option<String>,
 }
 
 fn b32_encode(data: &[u8]) -> String {
@@ -87,16 +90,34 @@ fn code_bytes(code: &str) -> Option<[u8; 8]> {
 }
 
 pub fn encode(host: &str, port: u16, code: &str) -> Result<String, String> {
+    encode_alt(host, port, code, None)
+}
+
+pub fn encode_alt(
+    host: &str,
+    port: u16,
+    code: &str,
+    alt_host: Option<&str>,
+) -> Result<String, String> {
     let host = host.trim();
     if host.is_empty() || host.len() > MAX_HOST {
         return Err("hote invalide pour le code de connexion".into());
     }
     let code = crate::crypto::norm_code(code).ok_or("code de jumelage invalide")?;
     let cb = code_bytes(&code).unwrap();
-    let mut payload = Vec::with_capacity(2 + host.len() + 2 + 8);
+    let alt = match alt_host.map(str::trim) {
+        Some(h) if !h.is_empty() && h.len() <= MAX_HOST => Some(h),
+        _ => None,
+    };
+    let mut payload = Vec::with_capacity(3 + host.len() + alt.map(|h| 1 + h.len()).unwrap_or(0) + 10);
     payload.push(LINK_VERSION);
     payload.push(host.len() as u8);
+    payload.push(if alt.is_some() { ALT_HOST } else { ALT_NONE });
     payload.extend_from_slice(host.as_bytes());
+    if let Some(h) = &alt {
+        payload.push(h.len() as u8);
+        payload.extend_from_slice(h.as_bytes());
+    }
     payload.extend_from_slice(&port.to_be_bytes());
     payload.extend_from_slice(&cb);
     let cs = checksum(&payload);
@@ -141,16 +162,41 @@ pub fn decode(input: &str) -> Result<LinkInfo, String> {
     if body.first() != Some(&LINK_VERSION) {
         return Err("version du code de connexion non prise en charge".into());
     }
-    if body.len() < 2 {
+    if body.len() < 3 {
         return Err("code de connexion tronque".into());
     }
     let hlen = body[1] as usize;
-    if body.len() < 2 + hlen + 10 {
+    let alt_kind = body[2];
+    if body.len() < 3 + hlen {
         return Err("code de connexion tronque (hote)".into());
     }
-    let host = String::from_utf8(body[2..2 + hlen].to_vec())
+    let host = String::from_utf8(body[3..3 + hlen].to_vec())
         .map_err(|_| "hote non-UTF8 dans le code de connexion".to_string())?;
-    let off = 2 + hlen;
+    let mut off = 3 + hlen;
+    let alt_host = match alt_kind {
+        ALT_NONE => None,
+        ALT_HOST => {
+            if body.len() < off + 1 {
+                return Err("code de connexion tronque (adresse alternative)".into());
+            }
+            let alen = body[off] as usize;
+            off += 1;
+            if body.len() < off + alen {
+                return Err("code de connexion tronque (adresse alternative)".into());
+            }
+            let a = String::from_utf8(body[off..off + alen].to_vec())
+                .map_err(|_| "adresse alternative non-UTF8".to_string())?;
+            off += alen;
+            Some(a)
+        }
+        _ => return Err("type d'adresse alternative inconnu".into()),
+    };
+    if body.len() < off + 10 {
+        return Err("code de connexion tronque (port/jumelage)".into());
+    }
+    if body.len() < off + 10 {
+        return Err("code de connexion tronque (port/jumelage)".into());
+    }
     let port = u16::from_be_bytes([body[off], body[off + 1]]);
     let cb: [u8; 8] = body[off + 2..off + 10]
         .try_into()
@@ -158,7 +204,12 @@ pub fn decode(input: &str) -> Result<LinkInfo, String> {
     let code_str = String::from_utf8(cb.to_vec())
         .map_err(|_| "code de jumelage illisible".to_string())?;
     let code = crate::crypto::norm_code(&code_str).ok_or("code de jumelage invalide")?;
-    Ok(LinkInfo { host, port, code })
+    Ok(LinkInfo {
+        host,
+        port,
+        code,
+        alt_host,
+    })
 }
 
 #[cfg(test)]
@@ -171,6 +222,17 @@ mod tests {
         assert!(l.starts_with("DTX1-"));
         let i = decode(&l).unwrap();
         assert_eq!(i.host, "192.168.1.42");
+        assert_eq!(i.port, 47500);
+        assert_eq!(i.code, "ABCD-2345");
+        assert!(i.alt_host.is_none());
+    }
+
+    #[test]
+    fn roundtrip_adresse_alternative() {
+        let l = encode_alt("192.168.1.42", 47500, "ABCD-2345", Some("82.65.12.34")).unwrap();
+        let i = decode(&l).unwrap();
+        assert_eq!(i.host, "192.168.1.42");
+        assert_eq!(i.alt_host.as_deref(), Some("82.65.12.34"));
         assert_eq!(i.port, 47500);
         assert_eq!(i.code, "ABCD-2345");
     }

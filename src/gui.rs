@@ -229,8 +229,8 @@ impl App {
             let res = match mode {
                 Mode::Send => {
                     let p = PathBuf::from(&dir);
-                    let (host, port, pair_code) = match crate::link::decode(&link) {
-                        Ok(info) => (info.host, info.port, info.code),
+                    let (host, port, alt, pair_code) = match crate::link::decode(&link) {
+                        Ok(info) => (info.host, info.port, info.alt_host, info.code),
                         Err(e) => {
                             let _ = tx_err.send(Event::Log(format!("[erreur] {}", e)));
                             let _ = tx_err.send(Event::Done {
@@ -242,7 +242,15 @@ impl App {
                         }
                     };
                     let dest = format!("{}:{}", host, port);
-                    transfer::send(&p, &dest, &pair_code, &cancel_send, rep.as_ref())
+                    let alt_dest = alt.as_ref().map(|a| format!("{}:{}", a, port));
+                    transfer::send(
+                        &p,
+                        &dest,
+                        alt_dest.as_deref(),
+                        &pair_code,
+                        &cancel_send,
+                        rep.as_ref(),
+                    )
                 }
                 Mode::Receive => {
                     let p = PathBuf::from(&out_dir);

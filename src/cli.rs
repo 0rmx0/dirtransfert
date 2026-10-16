@@ -128,7 +128,7 @@ pub fn run(argv: &[String]) -> i32 {
                     );
                     return 2;
                 };
-                transfer::send(Path::new(dir), addr, &code, &None, &rep)
+                transfer::send(Path::new(dir), addr, None, &code, &None, &rep)
             }
             _ => {
                 usage(exe);
