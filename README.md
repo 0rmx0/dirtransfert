@@ -86,13 +86,15 @@ L'outil ouvre alors automatiquement :
 - la **règle entrante dans le pare-feu Windows** (`--open-fw`, règle nommée `DirTransfert`, port TCP 47500) ;
 - la **redirection de port sur la box** (`--upnp`, via UPnP-IGD : découverte SSDP de la box, `AddPortMapping`, récupération de l'IP publique).
 
-Il affiche ensuite la **commande `send` prête à copier** avec l'IP publique de la box.
+Il affiche ensuite des **codes de connexion prêts à copier** (local et Internet).
 
-**2. Sur le PC émetteur** :
+**2. Sur le PC émetteur** — collez simplement le code de connexion affiché par le récepteur :
 
 ```sh
-DirTransfert --cli send /donnees 82.65.12.34:47500 --code AB2C-D34F
+DirTransfert --cli send /donnees DTX1-PQRST-UVWXY-Z2345-6789
 ```
+
+L'ancienne syntaxe `send /donnees <ip:port> --code AB2C-D34F` reste acceptée.
 
 Le répertoire est recréé sous `/reception/donnees` avec toute son arborescence. À la fin du transfert, avec `--close-fw`, la règle pare-feu et la redirection UPnP sont **automatiquement fermées**.
 
@@ -124,6 +126,7 @@ Le flux est chiffré de bout en bout entre les deux PC :
 
 - **Dérivation de clé** : Argon2id (64 Mio, 2 passes) sur le code de jumelage, avec sel déterministe par code.
 - **Chiffrement** : ChaCha20-Poly1305 (AEAD) — chaque trame est chiffrée, son intégrité est vérifiée (tag Poly1305) et son numéro (nonce+AAD) empêche toute réorganisation ou réinjection.
+- **Code de connexion** (`DTX1-...`) : l'adresse IP, le port et le code de jumelage y sont **obfusqués** (mélange XOR avec flux dérivé par SHA-256 + encodage Base32, checksum intégré contre les fautes de frappe). Ce n'est **pas du chiffrement** : quiconque possède le code et l'outil peut en extraire l'adresse. L'objectif est de ne pas afficher l'IP en clair et de simplifier la saisie ; la protection réelle du transfert reste le code de jumelage (Argon2id + ChaCha20-Poly1305). Une dissimulation complète de l'IP exigerait un serveur de rendez-vous, contraire au caractère décentralisé de l'outil.
 - **Authentification** : le code de jumelage doit être identique des deux côtés. La poignée de main vérifie la connaissance du code **dans les deux sens** avant le moindre octet de donnée — un intrus qui scannerait le port ne pourra pas se connecter sans le code.
 - **Code de jumelage** : 8 caractères sans caractères ambigus (pas de O/0/1/I), ~40 bits d'entropie. Communiquez-le par un canal de confiance (oral, téléphone), pas par le même canal que le transfert.
 

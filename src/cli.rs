@@ -65,8 +65,8 @@ fn usage(exe: &str) {
         exe, DEFAULT_PORT
     );
     eprintln!(
-        "  {} --cli send D:\\\\donnees 82.65.12.34:{}",
-        exe, DEFAULT_PORT
+        "  {} --cli send D:\\\\donnees DTX1-ABCDE-FGHIJ-KLM23-45678",
+        exe
     );
 }
 
