@@ -16,7 +16,33 @@ fn main() {
         eprintln!("[panique] {}", msg);
     }));
     let argv: Vec<String> = std::env::args().collect();
-    if std::env::var_os("WGPU_BACKEND").is_none() {
+    for a in &argv {
+        if let Some(v) = a.strip_prefix("--render=") {
+            let v = match v.to_ascii_lowercase().as_str() {
+                "dx11" => "dx11",
+                "dx12" => "dx12",
+                "vulkan" | "vk" => "vulkan",
+                "gl" | "opengl" => "gl",
+                "glow" => "glow",
+                "auto" => "auto",
+                _ => {
+                    eprintln!(
+                        "[erreur] --render inconnu : {} (dx12, dx11, vulkan, gl, glow, auto)",
+                        v
+                    );
+                    std::process::exit(2);
+                }
+            };
+            if v == "glow" {
+                std::env::set_var("DIRTRANSFER_FORCE_GLOW", "1");
+            } else if v != "auto" {
+                std::env::set_var("WGPU_BACKEND", v);
+            }
+        }
+    }
+    if std::env::var_os("WGPU_BACKEND").is_none()
+        && std::env::var_os("DIRTRANSFER_FORCE_GLOW").is_none()
+    {
         std::env::set_var("WGPU_BACKEND", "dx12");
     }
     if argv.iter().any(|a| a == "--cli" || a == "--console") {

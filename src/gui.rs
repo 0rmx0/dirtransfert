@@ -684,8 +684,14 @@ pub fn launch() -> Result<(), String> {
         "DirTransfert v{} - lancement de la GUI",
         env!("CARGO_PKG_VERSION")
     ));
-    log_step("tentative renderer wgpu".to_string());
-    let result = run(eframe::Renderer::Wgpu);
+    let force_glow = std::env::var_os("DIRTRANSFER_FORCE_GLOW").is_some();
+    let result = if force_glow {
+        log_step("--render=glow : glow force, wgpu ignore".to_string());
+        Err("glow force par --render=glow".to_string())
+    } else {
+        log_step("tentative renderer wgpu".to_string());
+        run(eframe::Renderer::Wgpu)
+    };
     if result.is_ok() {
         log_step("wgpu : fermeture normale".to_string());
         return Ok(());
