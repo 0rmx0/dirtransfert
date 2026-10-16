@@ -6,6 +6,7 @@ Les versions notables de DirTransfert. Format inspiré de [Keep a Changelog](htt
 ## [Non publié]
 ### Ajouté
 - **Code de connexion unique** (`DTX1-...`) : le récepteur affiche un code unique contenant de façon obfusquée (XOR + Base32 + checksum) l'adresse IP, le port et le code de jumelage ; l'émetteur (GUI ou CLI) n'a plus qu'à le saisir, sans manipuler d'IP. L'ancienne syntaxe CLI `send <ip:port> --code` reste acceptée.
+- **Connexion local puis Internet** : le code contient l'adresse locale et l'adresse publique ; l'émetteur tente le local d'abord, puis bascule sur Internet en cas d'échec (tentatives journalisées).
 
 ## [0.3.1] - 2026-10-16
 

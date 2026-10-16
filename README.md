@@ -58,13 +58,13 @@ Lancez le binaire sans argument :
 Une fenêtre s'ouvre avec :
 - le choix du mode **Envoyer / Recevoir** ;
 - la sélection du répertoire via un sélecteur de dossiers natif ;
-- l'adresse et le port de destination ;
+- le **code de connexion** (côté envoi) : un seul code `DTX1-...` fourni par le récepteur, contenant de façon obfusquée l'adresse locale, l'adresse publique, le port et le code de jumelage ; l'émetteur tente la connexion **en local** puis **via Internet** automatiquement ;
 - les options UPnP / pare-feu en cases à cocher (côté réception) ;
-- le **code de jumelage** : saisi des deux côtés (pré-généré au lancement côté réception, régénérable via le bouton « Générer »), il chiffre et authentifie le transfert ;
+- le **code de jumelage** (côté réception) : pré-généré au lancement, régénérable via le bouton « Générer », il chiffre et authentifie le transfert ;
 - un bouton **Annuler** pour interrompre un transfert en cours ;
 - une barre de progression (octets, Mo/s, %) et un journal en direct.
 
-Côté réception, l'outil affiche l'adresse exacte à communiquer à l'émetteur (IP locale et IP publique via UPnP), et alerte en cas de CGNAT.
+Côté réception, l'outil affiche un **code de connexion unique** `DTX1-...` prêt à copier (contenant l'IP locale et l'IP publique via UPnP) ; l'émetteur le colle et la connexion est tentée en local d'abord, puis via Internet. L'outil alerte en cas de CGNAT.
 
 Sous Windows, pour l'ouverture du pare-feu, lancez l'exe **en tant qu'administrateur** (clic droit → « Exécuter en tant qu'administrateur ») ; sinon l'outil affiche un avertissement dans le journal et continue.
 
@@ -79,14 +79,14 @@ DirTransfert --cli receive 0.0.0.0:47500 /reception --upnp --open-fw --close-fw
 Sans `--code`, le récepteur génère un code de jumelage et l'affiche :
 
 ```
-code de jumelage : AB2C-D34F  (à saisir sur l'émetteur)
+code de connexion à saisir sur l'émetteur : DTX1-ABCDE-FGHIJ-KLM23-45678
 ```
 
 L'outil ouvre alors automatiquement :
 - la **règle entrante dans le pare-feu Windows** (`--open-fw`, règle nommée `DirTransfert`, port TCP 47500) ;
 - la **redirection de port sur la box** (`--upnp`, via UPnP-IGD : découverte SSDP de la box, `AddPortMapping`, récupération de l'IP publique).
 
-Il affiche ensuite des **codes de connexion prêts à copier** (local et Internet).
+Il affiche ensuite le **code de connexion prêt à copier** (adresses locale + publique incluses).
 
 **2. Sur le PC émetteur** — collez simplement le code de connexion affiché par le récepteur :
 
