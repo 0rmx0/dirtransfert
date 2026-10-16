@@ -1,0 +1,57 @@
+name: Winget
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version a publier (ex: 0.3.1)"
+        required: true
+      submit:
+        description: "Ouvrir le PR vers microsoft/winget-pkgs"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  winget:
+    name: Update winget manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install winget-create
+        run: dotnet tool install --global Microsoft.WingetCreate
+
+      - name: Download MSI from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v${{ inputs.version }}" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.msi' --dir msi --clobber
+          ls -la msi/
+
+      - name: Update manifest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          MSI=$(ls msi/*.msi | grep -v arm64 | head -1)
+          ~/.dotnet/tools/wingetcreate update 0rmx0.DirTransfert \
+            --version ${{ inputs.version }} \
+            --urls "$MSI=https://github.com/$GITHUB_REPOSITORY/releases/download/v${{ inputs.version }}/$(basename "$MSI")" \
+            --submit ${{ inputs.submit }}
+
+      - name: Upload generated manifests
+        if: ${{ !inputs.submit }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: winget-manifests
+          path: |
+            **/*.yaml
+            !**/Cargo.lock
+          if-no-files-found: warn

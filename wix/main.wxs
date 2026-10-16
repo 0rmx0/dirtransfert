@@ -1,0 +1,41 @@
+<?xml version='1.0' encoding='windows-1252'?>
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+  <Product Name='DirTransfert' Id='*' UpgradeCode='7B0A9C0B-7C63-4EAA-9C7C-D1E2F3A4B5C6' Language='1033' Codepage='1252' Version='@(bind.FileVersion.DirTransfert.exe)' Manufacturer='0rmx0'>
+    <Package Id='*' Keywords='Installer' Description="DirTransfert Installer" Manufacturer='0rmx0' InstallScope='perMachine' InstallerVersion='200' Compressed='yes' />
+    <MediaTemplate EmbedCab='yes' />
+    <MajorUpgrade AllowDowngrades='no' AllowSameVersionUpgrades='yes' DowngradeErrorMessage='A newer version of DirTransfert is already installed.' Schedule='afterInstallInitialize' />
+    <Property Id='WIXUI_INSTALLDIR' Value='INSTALLDIR' />
+    <UIRef Id='WixUI_InstallDir' />
+    <Icon Id='icon.ico' SourceFile='assets/icon.ico' />
+    <Property Id='ARPPRODUCTICON' Value='icon.ico' />
+    <WixVariable Id='WixUILicenseRtf' Value='packaging/license.rtf' Overridable='yes' />
+
+    <Directory Id='TARGETDIR' Name='SourceDir'>
+      <Directory Id='ProgramFiles64Folder'>
+        <Directory Id='INSTALLDIR' Name='DirTransfert' />
+      </Directory>
+      <Directory Id='ProgramMenuFolder'>
+        <Directory Id='ApplicationProgramsFolder' Name='DirTransfert' />
+      </Directory>
+    </Directory>
+
+    <DirectoryRef Id='INSTALLDIR'>
+      <Component Id='MainExecutable' Guid='8C1B0D1E-2F3A-4B5C-9D6E-7A8B9C0D1E2F'>
+        <File Id='DirTransfert.exe' Name='DirTransfert.exe' Source='target/x86_64-pc-windows-msvc/release/DirTransfert.exe' KeyPath='yes' />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id='ApplicationProgramsFolder'>
+      <Component Id='StartMenuShortcut' Guid='9D2C1E2F-3A4B-5C6D-8E7F-9A0B1C2D3E4F'>
+        <Shortcut Id='StartMenuShortcut' Name='DirTransfert' Description='DirTransfert' Target='[INSTALLDIR]DirTransfert.exe' WorkingDirectory='INSTALLDIR' />
+        <RemoveFolder Id='ApplicationProgramsFolder' On='uninstall' />
+        <RegistryValue Root='HKCU' Key='Software\0rmx0\DirTransfert' Name='installed' Type='integer' Value='1' KeyPath='yes' />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id='MainApplication' Title='DirTransfert' Level='1'>
+      <ComponentRef Id='MainExecutable' />
+      <ComponentRef Id='StartMenuShortcut' />
+    </Feature>
+  </Product>
+</Wix>
