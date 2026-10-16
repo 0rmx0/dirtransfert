@@ -642,21 +642,24 @@ pub fn launch() -> Result<(), String> {
             .unwrap_or_else(|| std::path::PathBuf::from("DirTransfert-erreur.log"));
         let log_path = std::sync::Arc::new(log_path);
         let lp = log_path.clone();
+        let log_enabled = std::env::var_os("DIRTRANSFER_LOG").is_some();
         eframe::run_native(
             "DirTransfert",
             native,
             Box::new(move |cc| {
                 use std::io::Write;
-                if let Ok(mut f) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&*lp)
-                {
-                    let _ = writeln!(
-                        f,
-                        "fenetre creee, wgpu actif : {}",
-                        cc.wgpu_render_state.is_some()
-                    );
+                if log_enabled {
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&*lp)
+                    {
+                        let _ = writeln!(
+                            f,
+                            "fenetre creee, wgpu actif : {}",
+                            cc.wgpu_render_state.is_some()
+                        );
+                    }
                 }
                 cc.egui_ctx.set_visuals(rmx_visuals());
                 Ok(Box::new(App::default()))
@@ -666,6 +669,9 @@ pub fn launch() -> Result<(), String> {
     };
 
     let log_step = |msg: String| {
+        if std::env::var_os("DIRTRANSFER_LOG").is_none() {
+            return;
+        }
         let path = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))

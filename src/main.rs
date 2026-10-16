@@ -1,21 +1,27 @@
 fn main() {
-    std::panic::set_hook(Box::new(|info| {
-        let msg = format!("panique : {}", info);
-        let log_path = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))
-            .unwrap_or_else(|| std::path::PathBuf::from("DirTransfert-erreur.log"));
-        let _ = std::fs::write(
-            &log_path,
-            format!(
-                "DirTransfert v{} - panique\n{}\n",
-                env!("CARGO_PKG_VERSION"),
-                msg
-            ),
-        );
-        eprintln!("[panique] {}", msg);
-    }));
     let argv: Vec<String> = std::env::args().collect();
+    let log_enabled = argv.iter().any(|a| a == "--log" || a == "--verbose");
+    if log_enabled {
+        std::env::set_var("DIRTRANSFER_LOG", "1");
+    }
+    if log_enabled {
+        std::panic::set_hook(Box::new(|info| {
+            let msg = format!("panique : {}", info);
+            let log_path = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))
+                .unwrap_or_else(|| std::path::PathBuf::from("DirTransfert-erreur.log"));
+            let _ = std::fs::write(
+                &log_path,
+                format!(
+                    "DirTransfert v{} - panique\n{}\n",
+                    env!("CARGO_PKG_VERSION"),
+                    msg
+                ),
+            );
+            eprintln!("[panique] {}", msg);
+        }));
+    }
     for a in &argv {
         if let Some(v) = a.strip_prefix("--render=") {
             let v = match v.to_ascii_lowercase().as_str() {
@@ -40,12 +46,6 @@ fn main() {
             }
         }
     }
-    if std::env::var_os("WGPU_BACKEND").is_none()
-        && std::env::var_os("DIRTRANSFER_FORCE_GLOW").is_none()
-        && cfg!(windows)
-    {
-        std::env::set_var("WGPU_BACKEND", "dx12");
-    }
     if argv.iter().any(|a| a == "--cli" || a == "--console") {
         let code = dirtransfer::cli::run(&argv);
         std::process::exit(code);
@@ -55,19 +55,21 @@ fn main() {
             "{}\n\nAstuce : lancez avec --cli pour l'interface en ligne de commande.",
             e
         );
-        let log_path = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))
-            .or_else(|| Some(std::path::PathBuf::from("DirTransfert-erreur.log")));
-        if let Some(path) = log_path {
-            let _ = std::fs::write(
-                &path,
-                format!(
-                    "DirTransfert v{} - echec du lancement de la GUI\n{}\n",
-                    env!("CARGO_PKG_VERSION"),
-                    msg
-                ),
-            );
+        if log_enabled {
+            let log_path = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))
+                .or_else(|| Some(std::path::PathBuf::from("DirTransfert-erreur.log")));
+            if let Some(path) = log_path {
+                let _ = std::fs::write(
+                    &path,
+                    format!(
+                        "DirTransfert v{} - echec du lancement de la GUI\n{}\n",
+                        env!("CARGO_PKG_VERSION"),
+                        msg
+                    ),
+                );
+            }
         }
         rfd::MessageDialog::new()
             .set_title("DirTransfert - erreur")
