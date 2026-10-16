@@ -65,8 +65,8 @@ fn usage(exe: &str) {
         exe, DEFAULT_PORT
     );
     eprintln!(
-        "  {} --cli send D:\\\\donnees 82.65.12.34:{}",
-        exe, DEFAULT_PORT
+        "  {} --cli send D:\\\\donnees DTX1-ABCDE-FGHIJ-KLM23-45678",
+        exe
     );
 }
 
@@ -128,7 +128,7 @@ pub fn run(argv: &[String]) -> i32 {
                     );
                     return 2;
                 };
-                transfer::send(Path::new(dir), addr, &code, &None, &rep)
+                transfer::send(Path::new(dir), addr, None, &code, &None, &rep)
             }
             _ => {
                 usage(exe);

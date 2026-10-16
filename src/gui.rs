@@ -120,6 +120,8 @@ pub struct App {
     close_fw: bool,
     code: String,
     code_error: Option<String>,
+    link: String,
+    link_error: Option<String>,
     running: bool,
     error: Option<String>,
     finished: Option<(bool, usize, usize)>,
@@ -144,6 +146,8 @@ impl Default for App {
         Self {
             mode: Mode::Receive,
             code: crate::crypto::gen_code(),
+            link: String::new(),
+            link_error: None,
             dir: String::new(),
             addr: format!("0.0.0.0:{}", crate::protocol::DEFAULT_PORT),
             out_dir: String::new(),
@@ -209,6 +213,7 @@ impl App {
         let addr = self.addr.clone();
         let out_dir = self.out_dir.clone();
         let code = self.code.clone();
+        let link = self.link.clone();
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.cancel = Some(cancel.clone());
         let opts = Opts {
@@ -224,7 +229,28 @@ impl App {
             let res = match mode {
                 Mode::Send => {
                     let p = PathBuf::from(&dir);
-                    transfer::send(&p, &addr, &code, &cancel_send, rep.as_ref())
+                    let (host, port, alt, pair_code) = match crate::link::decode(&link) {
+                        Ok(info) => (info.host, info.port, info.alt_host, info.code),
+                        Err(e) => {
+                            let _ = tx_err.send(Event::Log(format!("[erreur] {}", e)));
+                            let _ = tx_err.send(Event::Done {
+                                ok: false,
+                                files_ok: 0,
+                                files_total: 0,
+                            });
+                            return;
+                        }
+                    };
+                    let dest = format!("{}:{}", host, port);
+                    let alt_dest = alt.as_ref().map(|a| format!("{}:{}", a, port));
+                    transfer::send(
+                        &p,
+                        &dest,
+                        alt_dest.as_deref(),
+                        &pair_code,
+                        &cancel_send,
+                        rep.as_ref(),
+                    )
                 }
                 Mode::Receive => {
                     let p = PathBuf::from(&out_dir);
@@ -341,31 +367,53 @@ impl eframe::App for App {
             ui.separator();
 
             let enabled = !self.running;
-            ui.horizontal(|ui| {
-                ui.label("Code de jumelage :");
-                ui.add_enabled(
-                    enabled,
-                    egui::TextEdit::singleline(&mut self.code)
-                        .desired_width(140.0)
-                        .hint_text("XXXX-XXXX"),
-                );
-                if self.mode == Mode::Receive
-                    && ui
+            if self.mode == Mode::Receive {
+                ui.horizontal(|ui| {
+                    ui.label("Code de jumelage :");
+                    ui.add_enabled(
+                        enabled,
+                        egui::TextEdit::singleline(&mut self.code)
+                            .desired_width(140.0)
+                            .hint_text("XXXX-XXXX"),
+                    );
+                    if ui
                         .add_enabled(enabled, egui::Button::new("Generer"))
                         .clicked()
-                {
-                    self.code = crate::crypto::gen_code();
+                    {
+                        self.code = crate::crypto::gen_code();
+                    }
+                    self.code_error = match crate::crypto::norm_code(&self.code) {
+                        Some(_) => None,
+                        None if self.code.trim().is_empty() => None,
+                        None => Some(
+                            "code invalide : 8 caracteres sans O/0/1/I (ex. ABCD-2345)".to_string(),
+                        ),
+                    };
+                });
+                if let Some(e) = &self.code_error {
+                    ui.colored_label(egui::Color32::from_rgb(0xFF, 0x6A, 0x4D), e);
                 }
-                self.code_error = match crate::crypto::norm_code(&self.code) {
-                    Some(_) => None,
-                    None if self.code.trim().is_empty() => None,
-                    None => Some(
-                        "code invalide : 8 caracteres sans O/0/1/I (ex. ABCD-2345)".to_string(),
+            } else {
+                ui.horizontal(|ui| {
+                    ui.label("Code de connexion :");
+                    ui.add_enabled(
+                        enabled,
+                        egui::TextEdit::singleline(&mut self.link)
+                            .desired_width(430.0)
+                            .hint_text("DTX1-XXXXX-... (fourni par le recepteur)"),
+                    );
+                });
+                self.link_error = match crate::link::decode(&self.link) {
+                    Ok(_) => None,
+                    Err(_) if self.link.trim().is_empty() => None,
+                    Err(_) => Some(
+                        "code de connexion invalide : il doit commencer par DTX1 (fourni par le recepteur)"
+                            .to_string(),
                     ),
                 };
-            });
-            if let Some(e) = &self.code_error {
-                ui.colored_label(egui::Color32::from_rgb(0xFF, 0x6A, 0x4D), e);
+                if let Some(e) = &self.link_error {
+                    ui.colored_label(egui::Color32::from_rgb(0xFF, 0x6A, 0x4D), e);
+                }
             }
             ui.separator();
             if self.mode == Mode::Send {
@@ -385,13 +433,12 @@ impl eframe::App for App {
                         self.browse();
                     }
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Destination (hote:port) :");
-                    ui.add_enabled(
-                        enabled,
-                        egui::TextEdit::singleline(&mut self.addr).desired_width(320.0),
-                    );
-                });
+                ui.label(
+                    egui::RichText::new(
+                        "L'adresse et le code de jumelage sont inclus dans le code de connexion.",
+                    )
+                    .color(BRUME),
+                );
             } else {
                 ui.horizontal(|ui| {
                     ui.label("Dossier de reception :");
@@ -449,14 +496,13 @@ impl eframe::App for App {
             ui.separator();
 
             let can_start = enabled
-                && crate::crypto::norm_code(&self.code).is_some()
                 && match self.mode {
                     Mode::Send => {
-                        !self.dir.trim().is_empty()
-                            && transfer::parse_endpoint(&self.addr).is_some()
+                        !self.dir.trim().is_empty() && crate::link::decode(&self.link).is_ok()
                     }
                     Mode::Receive => {
                         !self.out_dir.trim().is_empty()
+                            && crate::crypto::norm_code(&self.code).is_some()
                             && transfer::parse_endpoint(&self.addr).is_some()
                     }
                 };

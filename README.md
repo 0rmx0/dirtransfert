@@ -58,13 +58,13 @@ Lancez le binaire sans argument :
 Une fenêtre s'ouvre avec :
 - le choix du mode **Envoyer / Recevoir** ;
 - la sélection du répertoire via un sélecteur de dossiers natif ;
-- l'adresse et le port de destination ;
+- le **code de connexion** (côté envoi) : un seul code `DTX1-...` fourni par le récepteur, contenant de façon obfusquée l'adresse locale, l'adresse publique, le port et le code de jumelage ; l'émetteur tente la connexion **en local** puis **via Internet** automatiquement ;
 - les options UPnP / pare-feu en cases à cocher (côté réception) ;
-- le **code de jumelage** : saisi des deux côtés (pré-généré au lancement côté réception, régénérable via le bouton « Générer »), il chiffre et authentifie le transfert ;
+- le **code de jumelage** (côté réception) : pré-généré au lancement, régénérable via le bouton « Générer », il chiffre et authentifie le transfert ;
 - un bouton **Annuler** pour interrompre un transfert en cours ;
 - une barre de progression (octets, Mo/s, %) et un journal en direct.
 
-Côté réception, l'outil affiche l'adresse exacte à communiquer à l'émetteur (IP locale et IP publique via UPnP), et alerte en cas de CGNAT.
+Côté réception, l'outil affiche un **code de connexion unique** `DTX1-...` prêt à copier (contenant l'IP locale et l'IP publique via UPnP) ; l'émetteur le colle et la connexion est tentée en local d'abord, puis via Internet. L'outil alerte en cas de CGNAT.
 
 Sous Windows, pour l'ouverture du pare-feu, lancez l'exe **en tant qu'administrateur** (clic droit → « Exécuter en tant qu'administrateur ») ; sinon l'outil affiche un avertissement dans le journal et continue.
 
@@ -79,20 +79,22 @@ DirTransfert --cli receive 0.0.0.0:47500 /reception --upnp --open-fw --close-fw
 Sans `--code`, le récepteur génère un code de jumelage et l'affiche :
 
 ```
-code de jumelage : AB2C-D34F  (à saisir sur l'émetteur)
+code de connexion à saisir sur l'émetteur : DTX1-ABCDE-FGHIJ-KLM23-45678
 ```
 
 L'outil ouvre alors automatiquement :
 - la **règle entrante dans le pare-feu Windows** (`--open-fw`, règle nommée `DirTransfert`, port TCP 47500) ;
 - la **redirection de port sur la box** (`--upnp`, via UPnP-IGD : découverte SSDP de la box, `AddPortMapping`, récupération de l'IP publique).
 
-Il affiche ensuite la **commande `send` prête à copier** avec l'IP publique de la box.
+Il affiche ensuite le **code de connexion prêt à copier** (adresses locale + publique incluses).
 
-**2. Sur le PC émetteur** :
+**2. Sur le PC émetteur** — collez simplement le code de connexion affiché par le récepteur :
 
 ```sh
-DirTransfert --cli send /donnees 82.65.12.34:47500 --code AB2C-D34F
+DirTransfert --cli send /donnees DTX1-PQRST-UVWXY-Z2345-6789
 ```
+
+L'ancienne syntaxe `send /donnees <ip:port> --code AB2C-D34F` reste acceptée.
 
 Le répertoire est recréé sous `/reception/donnees` avec toute son arborescence. À la fin du transfert, avec `--close-fw`, la règle pare-feu et la redirection UPnP sont **automatiquement fermées**.
 
@@ -124,6 +126,7 @@ Le flux est chiffré de bout en bout entre les deux PC :
 
 - **Dérivation de clé** : Argon2id (64 Mio, 2 passes) sur le code de jumelage, avec sel déterministe par code.
 - **Chiffrement** : ChaCha20-Poly1305 (AEAD) — chaque trame est chiffrée, son intégrité est vérifiée (tag Poly1305) et son numéro (nonce+AAD) empêche toute réorganisation ou réinjection.
+- **Code de connexion** (`DTX1-...`) : l'adresse IP, le port et le code de jumelage y sont **obfusqués** (mélange XOR avec flux dérivé par SHA-256 + encodage Base32, checksum intégré contre les fautes de frappe). Ce n'est **pas du chiffrement** : quiconque possède le code et l'outil peut en extraire l'adresse. L'objectif est de ne pas afficher l'IP en clair et de simplifier la saisie ; la protection réelle du transfert reste le code de jumelage (Argon2id + ChaCha20-Poly1305). Une dissimulation complète de l'IP exigerait un serveur de rendez-vous, contraire au caractère décentralisé de l'outil.
 - **Authentification** : le code de jumelage doit être identique des deux côtés. La poignée de main vérifie la connaissance du code **dans les deux sens** avant le moindre octet de donnée — un intrus qui scannerait le port ne pourra pas se connecter sans le code.
 - **Code de jumelage** : 8 caractères sans caractères ambigus (pas de O/0/1/I), ~40 bits d'entropie. Communiquez-le par un canal de confiance (oral, téléphone), pas par le même canal que le transfert.
 
