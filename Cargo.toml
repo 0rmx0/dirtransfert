@@ -17,7 +17,7 @@ lto = true
 strip = true
 
 [dependencies]
-eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "links", "wayland", "x11", "glow"] }
+eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "links", "wayland", "x11", "glow", "wgpu"] }
 rfd = { version = "0.17.2", features = ["default"] }
 # Chiffrement du flux (option 2 : code de jumelage + AEAD)
 argon2 = "0.5"

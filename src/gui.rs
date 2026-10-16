@@ -627,7 +627,7 @@ pub fn launch() -> Result<(), String> {
         height: ICON_H,
     };
     let native = eframe::NativeOptions {
-        renderer: eframe::Renderer::Glow,
+        renderer: eframe::Renderer::Wgpu,
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([640.0, 560.0])
             .with_icon(std::sync::Arc::new(icon)),
