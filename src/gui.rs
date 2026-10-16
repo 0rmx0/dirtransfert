@@ -626,22 +626,94 @@ pub fn launch() -> Result<(), String> {
         width: ICON_W,
         height: ICON_H,
     };
-    let native = eframe::NativeOptions {
-        renderer: eframe::Renderer::Glow,
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([640.0, 560.0])
-            .with_icon(std::sync::Arc::new(icon)),
-        ..Default::default()
+    let viewport = egui::ViewportBuilder::default()
+        .with_inner_size([640.0, 560.0])
+        .with_icon(std::sync::Arc::new(icon));
+
+    let run = |renderer: eframe::Renderer| -> Result<(), String> {
+        let native = eframe::NativeOptions {
+            renderer,
+            viewport: viewport.clone(),
+            ..Default::default()
+        };
+        let log_path = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))
+            .unwrap_or_else(|| std::path::PathBuf::from("DirTransfert-erreur.log"));
+        let log_path = std::sync::Arc::new(log_path);
+        let lp = log_path.clone();
+        let log_enabled = std::env::var_os("DIRTRANSFER_LOG").is_some();
+        eframe::run_native(
+            "DirTransfert",
+            native,
+            Box::new(move |cc| {
+                use std::io::Write;
+                if log_enabled {
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&*lp)
+                    {
+                        let _ = writeln!(
+                            f,
+                            "fenetre creee, wgpu actif : {}",
+                            cc.wgpu_render_state.is_some()
+                        );
+                    }
+                }
+                cc.egui_ctx.set_visuals(rmx_visuals());
+                Ok(Box::new(App::default()))
+            }),
+        )
+        .map_err(|e| format!("lancement de la fenetre (renderer {:?}) : {}", renderer, e))
     };
-    eframe::run_native(
-        "DirTransfert",
-        native,
-        Box::new(|cc| {
-            cc.egui_ctx.set_visuals(rmx_visuals());
-            Ok(Box::new(App::default()))
-        }),
-    )
-    .map_err(|e| format!("lancement de la fenetre : {}", e))
+
+    let log_step = |msg: String| {
+        if std::env::var_os("DIRTRANSFER_LOG").is_none() {
+            return;
+        }
+        let path = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))
+            .unwrap_or_else(|| std::path::PathBuf::from("DirTransfert-erreur.log"));
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let _ = writeln!(f, "{}", msg);
+        }
+    };
+
+    log_step(format!(
+        "DirTransfert v{} - lancement de la GUI",
+        env!("CARGO_PKG_VERSION")
+    ));
+    let force_glow = std::env::var_os("DIRTRANSFER_FORCE_GLOW").is_some();
+    let result = if force_glow {
+        log_step("--render=glow : glow force, wgpu ignore".to_string());
+        Err("glow force par --render=glow".to_string())
+    } else {
+        log_step("tentative renderer wgpu".to_string());
+        run(eframe::Renderer::Wgpu)
+    };
+    if result.is_ok() {
+        log_step("wgpu : fermeture normale".to_string());
+        return Ok(());
+    }
+    log_step("renderer wgpu echoue, tentative glow (OpenGL)".to_string());
+    match run(eframe::Renderer::Glow) {
+        Err(glow_err) => {
+            let msg = format!("wgpu : {}\nglow : {}", result.unwrap_err(), glow_err);
+            log_step(format!("echec de tous les renderers\n{}", msg));
+            Err(msg)
+        }
+        Ok(()) => {
+            log_step("glow : fermeture normale".to_string());
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]
