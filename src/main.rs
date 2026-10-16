@@ -42,6 +42,7 @@ fn main() {
     }
     if std::env::var_os("WGPU_BACKEND").is_none()
         && std::env::var_os("DIRTRANSFER_FORCE_GLOW").is_none()
+        && cfg!(windows)
     {
         std::env::set_var("WGPU_BACKEND", "dx12");
     }
