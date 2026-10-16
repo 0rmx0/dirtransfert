@@ -652,7 +652,11 @@ pub fn launch() -> Result<(), String> {
                     .append(true)
                     .open(&*lp)
                 {
-                    let _ = writeln!(f, "fenetre creee, renderer actif : {:?}", cc.renderer);
+                    let _ = writeln!(
+                        f,
+                        "fenetre creee, wgpu actif : {}",
+                        cc.wgpu_render_state.is_some()
+                    );
                 }
                 cc.egui_ctx.set_visuals(rmx_visuals());
                 Ok(Box::new(App::default()))
