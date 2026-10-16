@@ -691,15 +691,16 @@ pub fn launch() -> Result<(), String> {
         return Ok(());
     }
     log_step("renderer wgpu echoue, tentative glow (OpenGL)".to_string());
-    let fallback = run(eframe::Renderer::Glow);
-    if fallback.is_err() {
-        let msg = format!(
-            "wgpu : {}\nglow : {}",
-            result.unwrap_err(),
-            fallback.unwrap_err()
-        );
-        log_step(format!("echec de tous les renderers\n{}", msg));
-        return Err(msg);
+    match (result, run(eframe::Renderer::Glow)) {
+        (Err(wgpu_err), Err(glow_err)) => {
+            let msg = format!("wgpu : {}\nglow : {}", wgpu_err, glow_err);
+            log_step(format!("echec de tous les renderers\n{}", msg));
+            Err(msg)
+        }
+        (_, Ok(())) => {
+            log_step("glow : fermeture normale".to_string());
+            Ok(())
+        }
     }
     log_step("glow : fermeture normale".to_string());
     Ok(())
