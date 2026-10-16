@@ -636,10 +636,24 @@ pub fn launch() -> Result<(), String> {
             viewport: viewport.clone(),
             ..Default::default()
         };
+        let log_path = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))
+            .unwrap_or_else(|| std::path::PathBuf::from("DirTransfert-erreur.log"));
+        let log_path = std::sync::Arc::new(log_path);
+        let lp = log_path.clone();
         eframe::run_native(
             "DirTransfert",
             native,
-            Box::new(|cc| {
+            Box::new(move |cc| {
+                use std::io::Write;
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&*lp)
+                {
+                    let _ = writeln!(f, "fenetre creee, renderer actif : {:?}", cc.renderer);
+                }
                 cc.egui_ctx.set_visuals(rmx_visuals());
                 Ok(Box::new(App::default()))
             }),
@@ -647,23 +661,32 @@ pub fn launch() -> Result<(), String> {
         .map_err(|e| format!("lancement de la fenetre (renderer {:?}) : {}", renderer, e))
     };
 
-    let log_step = |msg: &str| {
+    let log_step = |msg: String| {
         let path = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))
             .unwrap_or_else(|| std::path::PathBuf::from("DirTransfert-erreur.log"));
-        let _ = std::fs::write(
-            &path,
-            format!("DirTransfert v{}\n{}\n", env!("CARGO_PKG_VERSION"), msg),
-        );
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let _ = writeln!(f, "{}", msg);
+        }
     };
 
-    log_step("lancement de la GUI : tentative renderer wgpu");
+    log_step(format!(
+        "DirTransfert v{} - lancement de la GUI",
+        env!("CARGO_PKG_VERSION")
+    ));
+    log_step("tentative renderer wgpu".to_string());
     let result = run(eframe::Renderer::Wgpu);
     if result.is_ok() {
+        log_step("wgpu : fermeture normale".to_string());
         return Ok(());
     }
-    log_step("renderer wgpu echoue, tentative glow (OpenGL)");
+    log_step("renderer wgpu echoue, tentative glow (OpenGL)".to_string());
     let fallback = run(eframe::Renderer::Glow);
     if fallback.is_err() {
         let msg = format!(
@@ -671,9 +694,10 @@ pub fn launch() -> Result<(), String> {
             result.unwrap_err(),
             fallback.unwrap_err()
         );
-        log_step(&format!("echec de tous les renderers\n{}", msg));
+        log_step(format!("echec de tous les renderers\n{}", msg));
         return Err(msg);
     }
+    log_step("glow : fermeture normale".to_string());
     Ok(())
 }
 
