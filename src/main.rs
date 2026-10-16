@@ -5,7 +5,14 @@ fn main() {
             .ok()
             .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))
             .unwrap_or_else(|| std::path::PathBuf::from("DirTransfert-erreur.log"));
-        let _ = std::fs::write(&log_path, format!("DirTransfert v{} - panique\n{}\n", env!("CARGO_PKG_VERSION"), msg));
+        let _ = std::fs::write(
+            &log_path,
+            format!(
+                "DirTransfert v{} - panique\n{}\n",
+                env!("CARGO_PKG_VERSION"),
+                msg
+            ),
+        );
         eprintln!("[panique] {}", msg);
     }));
     let argv: Vec<String> = std::env::args().collect();
@@ -25,8 +32,11 @@ fn main() {
         if let Some(path) = log_path {
             let _ = std::fs::write(
                 &path,
-                format!("DirTransfert v{} - echec du lancement de la GUI\n{}\n",
-                    env!("CARGO_PKG_VERSION"), msg),
+                format!(
+                    "DirTransfert v{} - echec du lancement de la GUI\n{}\n",
+                    env!("CARGO_PKG_VERSION"),
+                    msg
+                ),
             );
         }
         rfd::MessageDialog::new()
