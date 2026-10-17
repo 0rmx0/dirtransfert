@@ -586,51 +586,26 @@ impl App {
             "Des milliers de fichiers, un seul dossier. Choisissez le rôle de ce PC pour commencer.",
         );
 
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.set_min_width(ui.available_width() / 2.0 - 10.0);
-                card_frame().show(ui, |ui| {
-                    ui.set_min_size(egui::vec2(0.0, 110.0));
-                    ui.label(egui::RichText::new("Envoyer").size(19.0).color(ENCRE).strong());
-                    ui.label(
-                        egui::RichText::new(
-                            "Choisissez un dossier et connectez-vous au PC qui le reçoit.",
-                        )
-                        .color(BRUME),
-                    );
-                    ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                        if ui
-                            .button(egui::RichText::new("Choisir ce rôle").color(SPECTRE))
-                            .clicked()
-                        {
-                            self.mode = Mode::Send;
-                            self.screen = Screen::Prepare;
-                        }
-                    });
+        ui.columns(2, |cols| {
+            for (i, col) in cols.iter_mut().enumerate() {
+                card_frame().show(col, |ui| {
+                    let (title, desc) = if i == 0 {
+                        ("Envoyer", "Choisissez un dossier et connectez-vous au PC qui le reçoit.")
+                    } else {
+                        ("Recevoir", "Choisissez où enregistrer les fichiers et partagez votre code.")
+                    };
+                    ui.label(egui::RichText::new(title).size(19.0).color(ENCRE).strong());
+                    ui.label(egui::RichText::new(desc).color(BRUME));
+                    ui.add_space(8.0);
+                    if ui
+                        .button(egui::RichText::new("Choisir ce rôle").color(SPECTRE))
+                        .clicked()
+                    {
+                        self.mode = if i == 0 { Mode::Send } else { Mode::Receive };
+                        self.screen = Screen::Prepare;
+                    }
                 });
-            });
-            ui.vertical(|ui| {
-                ui.set_min_width(ui.available_width() - 10.0);
-                card_frame().show(ui, |ui| {
-                    ui.set_min_size(egui::vec2(0.0, 110.0));
-                    ui.label(egui::RichText::new("Recevoir").size(19.0).color(ENCRE).strong());
-                    ui.label(
-                        egui::RichText::new(
-                            "Choisissez où enregistrer les fichiers et partagez votre code.",
-                        )
-                        .color(BRUME),
-                    );
-                    ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                        if ui
-                            .button(egui::RichText::new("Choisir ce rôle").color(SPECTRE))
-                            .clicked()
-                        {
-                            self.mode = Mode::Receive;
-                            self.screen = Screen::Prepare;
-                        }
-                    });
-                });
-            });
+            }
         });
 
         ui.add_space(12.0);
@@ -674,7 +649,6 @@ impl App {
                     .stroke(egui::Stroke::new(RMX_STROKE, SPECTRE))
                     .inner_margin(egui::Margin::symmetric(8, 4))
                     .show(ui, |ui| {
-                        ui.set_min_size(egui::vec2(20.0, 22.0));
                         ui.label(egui::RichText::new(ch.to_string()).size(20.0).color(ENCRE));
                     });
             }
@@ -718,7 +692,7 @@ impl App {
                         ui.add_enabled(
                             enabled,
                             egui::TextEdit::singleline(&mut self.dir)
-                                .desired_width(ui.available_width() - 120.0)
+                                .desired_width(f32::INFINITY)
                                 .hint_text("C:\\..."),
                         );
                         if ui
@@ -777,7 +751,7 @@ impl App {
                         ui.add_enabled(
                             enabled,
                             egui::TextEdit::singleline(&mut self.out_dir)
-                                .desired_width(ui.available_width() - 120.0)
+                                .desired_width(f32::INFINITY)
                                 .hint_text("D:\\Transferts"),
                         );
                         if ui
