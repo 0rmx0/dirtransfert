@@ -24,6 +24,8 @@ argon2 = "0.5"
 chacha20poly1305 = "0.10"
 rand = "0.9"
 sha2 = "0.10"
+wgpu = "30.0.1"
+egui-wgpu = "0.36.2"
 
 [build-dependencies]
 winresource = "0.1"
