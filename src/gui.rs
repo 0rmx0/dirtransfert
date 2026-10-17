@@ -493,6 +493,18 @@ impl eframe::App for App {
                 });
             });
 
+        egui::Panel::bottom("rmx_actions")
+            .frame(
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(20, 6))
+                    .fill(egui::Color32::TRANSPARENT),
+            )
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    self.ui_action_bar(ui);
+                });
+            });
+
         egui::CentralPanel::default()
             .frame(egui::Frame::new().inner_margin(egui::Margin::same(20)))
             .show(ui, |ui| {
@@ -860,32 +872,87 @@ impl App {
                     .color(TERMINAL),
             );
         });
+    }
 
-        ui.add_space(12.0);
-        let can_start = enabled
-            && crate::crypto::norm_code(&self.code).is_some()
-            && match self.mode {
-                Mode::Send => {
-                    !self.dir.trim().is_empty() && transfer::parse_endpoint(&self.addr).is_some()
+    fn ui_action_bar(&mut self, ui: &mut egui::Ui) {
+        match self.screen {
+            Screen::Home => {}
+            Screen::Prepare => {
+                let enabled = !self.running;
+                let can_start = enabled
+                    && crate::crypto::norm_code(&self.code).is_some()
+                    && match self.mode {
+                        Mode::Send => {
+                            !self.dir.trim().is_empty()
+                                && transfer::parse_endpoint(&self.addr).is_some()
+                        }
+                        Mode::Receive => {
+                            !self.out_dir.trim().is_empty()
+                                && transfer::parse_endpoint(&self.addr).is_some()
+                        }
+                    };
+                let start_label = if self.mode == Mode::Send {
+                    "Démarrer le transfert"
+                } else {
+                    "Démarrer la réception"
+                };
+                if ui
+                    .add_enabled(
+                        can_start,
+                        egui::Button::new(
+                            egui::RichText::new(start_label).color(SPECTRE).size(16.0),
+                        ),
+                    )
+                    .clicked()
+                {
+                    self.start_transfer();
                 }
-                Mode::Receive => {
-                    !self.out_dir.trim().is_empty()
-                        && transfer::parse_endpoint(&self.addr).is_some()
+            }
+            Screen::Running => {
+                if ui
+                    .button(egui::RichText::new("Annuler").color(ETRANGE).size(16.0))
+                    .clicked()
+                {
+                    if let Some(c) = &self.cancel {
+                        c.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    self.log.push_str("annulation demandée...\n");
                 }
-            };
-        let start_label = if self.mode == Mode::Send {
-            "Démarrer le transfert"
-        } else {
-            "Démarrer la réception"
-        };
-        if ui
-            .add_enabled(
-                can_start,
-                egui::Button::new(egui::RichText::new(start_label).color(SPECTRE).size(16.0)),
-            )
-            .clicked()
-        {
-            self.start_transfer();
+            }
+            Screen::Finished => {
+                if ui
+                    .button(
+                        egui::RichText::new("Retour à l'accueil")
+                            .color(SPECTRE)
+                            .size(16.0),
+                    )
+                    .clicked()
+                {
+                    self.reset_to_home();
+                }
+                if self.mode == Mode::Receive && ui.button("Ouvrir le dossier").clicked() {
+                    let dir = self.out_dir.clone();
+                    Self::open_in_explorer(&dir);
+                }
+            }
+            Screen::Interrupted => {
+                if ui
+                    .button(egui::RichText::new("Modifier la connexion").color(SPECTRE))
+                    .clicked()
+                {
+                    self.screen = Screen::Prepare;
+                    self.running = false;
+                    self.finished = None;
+                    self.rx = None;
+                    self.cancel = None;
+                }
+                if ui
+                    .button(egui::RichText::new("Réessayer").color(TERMINAL))
+                    .clicked()
+                {
+                    self.start_transfer();
+                }
+            }
         }
     }
 
@@ -979,17 +1046,6 @@ impl App {
                         );
                     });
             });
-
-        ui.add_space(8.0);
-        if ui
-            .button(egui::RichText::new("Annuler").color(ETRANGE))
-            .clicked()
-        {
-            if let Some(c) = &self.cancel {
-                c.store(true, std::sync::atomic::Ordering::Relaxed);
-            }
-            self.log.push_str("annulation demandée...\n");
-        }
     }
 
     fn ui_finished(&mut self, ui: &mut egui::Ui) {
@@ -1051,20 +1107,6 @@ impl App {
                     .color(TERMINAL),
             );
         });
-
-        ui.add_space(12.0);
-        ui.horizontal(|ui| {
-            if ui
-                .button(egui::RichText::new("Retour à l'accueil").color(SPECTRE))
-                .clicked()
-            {
-                self.reset_to_home();
-            }
-            if self.mode == Mode::Receive && ui.button("Ouvrir le dossier").clicked() {
-                let dir = self.out_dir.clone();
-                Self::open_in_explorer(&dir);
-            }
-        });
     }
 
     fn ui_interrupted(&mut self, ui: &mut egui::Ui) {
@@ -1108,26 +1150,6 @@ impl App {
                         );
                     });
             });
-
-        ui.add_space(10.0);
-        ui.horizontal(|ui| {
-            if ui
-                .button(egui::RichText::new("Modifier la connexion").color(SPECTRE))
-                .clicked()
-            {
-                self.screen = Screen::Prepare;
-                self.running = false;
-                self.finished = None;
-                self.rx = None;
-                self.cancel = None;
-            }
-            if ui
-                .button(egui::RichText::new("Réessayer").color(TERMINAL))
-                .clicked()
-            {
-                self.start_transfer();
-            }
-        });
     }
 }
 
@@ -1168,7 +1190,7 @@ pub fn launch() -> Result<(), String> {
         height: ICON_H,
     };
     let viewport = egui::ViewportBuilder::default()
-        .with_inner_size([720.0, 640.0])
+        .with_inner_size([760.0, 700.0])
         .with_icon(std::sync::Arc::new(icon));
 
     let run = |renderer: eframe::Renderer| -> Result<(), String> {
