@@ -1147,6 +1147,20 @@ fn block_on<F: Future>(fut: F) -> F::Output {
     }
 }
 
+fn wgpu_backends_from_env() -> Option<wgpu::Backends> {
+    let v = std::env::var("DIRTRANSFER_WGPU_BACKEND")
+        .ok()?
+        .to_lowercase();
+    Some(match v.as_str() {
+        "vulkan" => wgpu::Backends::VULKAN,
+        "gl" | "gles" | "opengl" => wgpu::Backends::GL,
+        "dx12" | "d3d12" => wgpu::Backends::DX12,
+        "metal" => wgpu::Backends::METAL,
+        "primary" => wgpu::Backends::PRIMARY,
+        _ => return None,
+    })
+}
+
 pub fn launch() -> Result<(), String> {
     let icon = egui::IconData {
         rgba: ICON_RGBA.to_vec(),
@@ -1158,11 +1172,18 @@ pub fn launch() -> Result<(), String> {
         .with_icon(std::sync::Arc::new(icon));
 
     let run = |renderer: eframe::Renderer| -> Result<(), String> {
-        let native = eframe::NativeOptions {
+        let mut native = eframe::NativeOptions {
             renderer,
             viewport: viewport.clone(),
             ..Default::default()
         };
+        if let Some(backends) = wgpu_backends_from_env() {
+            if let egui_wgpu::WgpuSetup::CreateNew(ref mut create_new) =
+                native.wgpu_options.wgpu_setup
+            {
+                create_new.instance_descriptor.backends = backends;
+            }
+        }
         let log_path = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|d| d.join("DirTransfert-erreur.log")))
