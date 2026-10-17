@@ -1238,27 +1238,59 @@ pub fn launch() -> Result<(), String> {
         "DirTransfert v{} - lancement de la GUI",
         env!("CARGO_PKG_VERSION")
     ));
+    // Sous Linux, wgpu peut bloquer au lancement selon le pilote (voir b0a0b490) :
+    // Glow (OpenGL) est essaye en premier. Ailleurs, wgpu d'abord puis glow en repli.
     let force_glow = std::env::var_os("DIRTRANSFER_FORCE_GLOW").is_some();
-    let result = if force_glow {
-        log_step("--render=glow : glow force, wgpu ignore".to_string());
-        Err("glow force par --render=glow".to_string())
+    let force_wgpu = std::env::var_os("DIRTRANSFER_WGPU_FORCE").is_some();
+    let prefer_glow = force_glow || (!force_wgpu && cfg!(target_os = "linux"));
+    let (first, second, first_name, second_name) = if prefer_glow {
+        (
+            eframe::Renderer::Glow,
+            eframe::Renderer::Wgpu,
+            "glow",
+            "wgpu",
+        )
     } else {
-        log_step("tentative renderer wgpu".to_string());
-        run(eframe::Renderer::Wgpu)
+        (
+            eframe::Renderer::Wgpu,
+            eframe::Renderer::Glow,
+            "wgpu",
+            "glow",
+        )
     };
+    if force_glow {
+        log_step("--render=glow : glow force, wgpu ignore".to_string());
+    } else if force_wgpu {
+        log_step("DIRTRANSFER_WGPU_FORCE=1 : wgpu force, glow en repli".to_string());
+    } else if prefer_glow {
+        log_step("Linux : glow (OpenGL) essaye en premier, wgpu en repli".to_string());
+    }
+    let result = run(first);
     if result.is_ok() {
-        log_step("wgpu : fermeture normale".to_string());
+        log_step(format!("{} : fermeture normale", first_name));
         return Ok(());
     }
-    log_step("renderer wgpu echoue, tentative glow (OpenGL)".to_string());
-    match run(eframe::Renderer::Glow) {
-        Err(glow_err) => {
-            let msg = format!("wgpu : {}\nglow : {}", result.unwrap_err(), glow_err);
+    if force_glow {
+        return result;
+    }
+    log_step(format!(
+        "renderer {} echoue, tentative {}",
+        first_name, second_name
+    ));
+    match run(second) {
+        Err(second_err) => {
+            let msg = format!(
+                "{} : {}\n{} : {}",
+                first_name,
+                result.unwrap_err(),
+                second_name,
+                second_err
+            );
             log_step(format!("echec de tous les renderers\n{}", msg));
             Err(msg)
         }
         Ok(()) => {
-            log_step("glow : fermeture normale".to_string());
+            log_step(format!("{} : fermeture normale", second_name));
             Ok(())
         }
     }
