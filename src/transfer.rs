@@ -496,7 +496,7 @@ pub fn send(
         }
         write_kind(&mut stream, KIND_META, b"").map_err(|e| format!("fin de {} : {}", rel, e))?;
         remaining -= 1;
-            rep.file(&rel, manifest.files.len() - remaining, manifest.files.len());
+        rep.file(&rel, manifest.files.len() - remaining, manifest.files.len());
     }
 
     let fin = read_msg(&mut stream).map_err(|e| format!("protocole : {}", e))?;

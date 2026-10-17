@@ -498,14 +498,12 @@ impl eframe::App for App {
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        match self.screen {
-                            Screen::Home => self.ui_home(ui),
-                            Screen::Prepare => self.ui_prepare(ui),
-                            Screen::Running => self.ui_running(ui),
-                            Screen::Finished => self.ui_finished(ui),
-                            Screen::Interrupted => self.ui_interrupted(ui),
-                        }
+                    .show(ui, |ui| match self.screen {
+                        Screen::Home => self.ui_home(ui),
+                        Screen::Prepare => self.ui_prepare(ui),
+                        Screen::Running => self.ui_running(ui),
+                        Screen::Finished => self.ui_finished(ui),
+                        Screen::Interrupted => self.ui_interrupted(ui),
                     });
             });
 
@@ -590,9 +588,15 @@ impl App {
             for (i, col) in cols.iter_mut().enumerate() {
                 card_frame().show(col, |ui| {
                     let (title, desc) = if i == 0 {
-                        ("Envoyer", "Choisissez un dossier et connectez-vous au PC qui le reçoit.")
+                        (
+                            "Envoyer",
+                            "Choisissez un dossier et connectez-vous au PC qui le reçoit.",
+                        )
                     } else {
-                        ("Recevoir", "Choisissez où enregistrer les fichiers et partagez votre code.")
+                        (
+                            "Recevoir",
+                            "Choisissez où enregistrer les fichiers et partagez votre code.",
+                        )
                     };
                     ui.label(egui::RichText::new(title).size(19.0).color(ENCRE).strong());
                     ui.label(egui::RichText::new(desc).color(BRUME));
@@ -637,11 +641,7 @@ impl App {
         ui.horizontal(|ui| {
             for (i, ch) in clean.chars().take(crate::crypto::CODE_LEN).enumerate() {
                 if i == 4 {
-                    ui.label(
-                        egui::RichText::new("-")
-                            .size(24.0)
-                            .color(OMBRE),
-                    );
+                    ui.label(egui::RichText::new("-").size(24.0).color(OMBRE));
                 }
                 egui::Frame::new()
                     .fill(egui::Color32::from_rgb(0x18, 0x18, 0x18))
@@ -891,11 +891,7 @@ impl App {
 
     fn ui_running(&mut self, ui: &mut egui::Ui) {
         let title = match self.mode {
-            Mode::Send => format!(
-                "Transfert en cours — {} → {}",
-                self.dir,
-                self.addr
-            ),
+            Mode::Send => format!("Transfert en cours — {} → {}", self.dir, self.addr),
             Mode::Receive => format!("Réception en cours — écoute sur {}", self.addr),
         };
         self.ui_header(ui, "Transfert en cours", &title);
@@ -1011,7 +1007,12 @@ impl App {
         card_frame().show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
-                    ui.label(egui::RichText::new(files_ok.to_string()).size(28.0).color(ENCRE).strong());
+                    ui.label(
+                        egui::RichText::new(files_ok.to_string())
+                            .size(28.0)
+                            .color(ENCRE)
+                            .strong(),
+                    );
                     ui.label(egui::RichText::new("fichiers reçus").color(BRUME));
                 });
                 ui.separator();
@@ -1026,7 +1027,12 @@ impl App {
                 });
                 ui.separator();
                 ui.vertical(|ui| {
-                    ui.label(egui::RichText::new(duration).size(28.0).color(ENCRE).strong());
+                    ui.label(
+                        egui::RichText::new(duration)
+                            .size(28.0)
+                            .color(ENCRE)
+                            .strong(),
+                    );
                     ui.label(egui::RichText::new("durée du transfert").color(BRUME));
                 });
             });
