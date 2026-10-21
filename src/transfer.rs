@@ -115,8 +115,17 @@ fn load_existing_hashes(
 }
 
 pub fn parse_endpoint(s: &str) -> Option<(String, u16)> {
-    let (host, port) = s.rsplit_once(':')?;
-    if host.is_empty() {
+    let trimmed = s.trim();
+    if let Some(rest) = trimmed.strip_prefix('[') {
+        let (host, after) = rest.split_once(']')?;
+        let port = after.strip_prefix(':')?;
+        if port.is_empty() || port.contains(']') {
+            return None;
+        }
+        return port.parse::<u16>().ok().map(|p| (host.to_string(), p));
+    }
+    let (host, port) = trimmed.rsplit_once(':')?;
+    if host.is_empty() || host.contains(':') {
         return None;
     }
     port.parse::<u16>().ok().map(|p| (host.to_string(), p))

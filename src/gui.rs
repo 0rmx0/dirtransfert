@@ -747,5 +747,10 @@ mod tests {
         assert!(transfer::parse_endpoint("sansport").is_none());
         assert!(transfer::parse_endpoint(":47500").is_none());
         assert!(transfer::parse_endpoint("hote:pasunnombre").is_none());
+        let (h, p) = transfer::parse_endpoint("[2001:db8::1]:47500").unwrap();
+        assert_eq!(h, "2001:db8::1");
+        assert_eq!(p, 47500);
+        assert!(transfer::parse_endpoint("2001:db8::1").is_none());
+        assert!(transfer::parse_endpoint("[2001:db8::1]:pasunnombre").is_none());
     }
 }
