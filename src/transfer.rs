@@ -4,7 +4,7 @@ use crate::protocol::*;
 use crate::{firewall, net, upnp};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -289,11 +289,23 @@ pub fn receive(
             rep.log(format!("IP publique : {} (via Internet, trouvez l'IP de la box sur son interface d'administration)", e));
         }
     }
-    let listener = TcpListener::bind(&bind_addr).map_err(|e| format!("liaison de {} : {}", addr, e))?;
+    let listener = TcpListener::bind(&bind_addr).map_err(|e| format!("liaison de {} : {}", bind_addr, e))?;
     rep.log(format!("en ecoute sur {}", addr));
-    let (sock, peer) = listener
-        .accept()
-        .map_err(|e| format!("acceptation : {}", e))?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|e| format!("mode non bloquant : {}", e))?;
+    let (sock, peer) = loop {
+        check_cancel(&opts.cancel)?;
+        match listener.accept() {
+            Ok(pair) => break pair,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => return Err(format!("acceptation : {}", e)),
+        }
+    };
+    sock.set_nonblocking(false)
+        .map_err(|e| format!("retour au mode bloquant : {}", e))?;
     rep.log(format!("connexion de {}", peer));
     let mut stream = SecureStream::server_handshake(sock, code)
         .map_err(|e| format!("poignee de main chiffree avec {} : {}", peer, e))?;
@@ -503,8 +515,30 @@ pub fn send(
         addr
     ));
 
-    let sock = TcpStream::connect(addr).map_err(|e| format!("connexion a {} : {}", addr, e))?;
-    sock.set_nodelay(true).ok();
+    let addrs: Vec<std::net::SocketAddr> = addr
+        .to_socket_addrs()
+        .map_err(|e| format!("resolution de {} : {}", addr, e))?
+        .collect();
+    if addrs.is_empty() {
+        return Err(format!("aucune adresse trouvee pour {}", addr));
+    }
+    let sock = loop {
+        check_cancel(cancel)?;
+        let mut connected: Option<TcpStream> = None;
+        for sa in &addrs {
+            match TcpStream::connect_timeout(sa, Duration::from_secs(1)) {
+                Ok(s) => {
+                    let _ = s.set_nodelay(true);
+                    connected = Some(s);
+                    break;
+                }
+                Err(_) => continue,
+            }
+        }
+        if let Some(s) = connected {
+            break s;
+        }
+    };
     let mut stream = SecureStream::client_handshake(sock, code)
         .map_err(|e| format!("poignee de main chiffree avec {} : {}", addr, e))?;
     stream.set_timeouts(Some(IO_TIMEOUT), Some(IO_TIMEOUT));
