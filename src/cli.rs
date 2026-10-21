@@ -58,6 +58,9 @@ fn usage(exe: &str) {
     eprintln!(
         "  --pipeline N  nombre de requetes en vol (1-64, defaut 8) : plus = plus rapide sur LAN"
     );
+    eprintln!(
+        "  --ipv6        ecoute sur l'adresse IPv6 globale si disponible (bascule en IPv4 sinon)"
+    );
     eprintln!();
     eprintln!("Exemples :");
     eprintln!(
@@ -80,6 +83,7 @@ pub fn run(argv: &[String]) -> i32 {
         match a.as_str() {
             "--cli" | "--console" => {}
             "--upnp" => opts.upnp = true,
+            "--ipv6" => opts.prefer_ipv6 = true,
             "--open-fw" | "--open-fw-after" => opts.open_fw = true,
             "--close-fw" | "--close-fw-after" => opts.close_fw_after = true,
             "--pipeline" => {

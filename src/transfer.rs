@@ -1,7 +1,7 @@
 use crate::crypto::SecureStream;
 use crate::firewall::RULE_NAME;
 use crate::protocol::*;
-use crate::{firewall, upnp};
+use crate::{firewall, net, upnp};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -128,6 +128,7 @@ pub struct Opts {
     pub open_fw: bool,
     pub close_fw_after: bool,
     pub pipeline: Option<usize>,
+    pub prefer_ipv6: bool,
     pub cancel: Option<Arc<AtomicBool>>,
 }
 
@@ -191,7 +192,24 @@ pub fn receive(
         }
     }
     let mut upnp_map = None;
-    if opts.upnp {
+    let mut natpmp_used = false;
+    let mut bind_addr = addr.to_string();
+    if opts.prefer_ipv6 {
+        if let Some(ip6) = net::global_ipv6() {
+            rep.log(format!("IPv6 globale disponible : {}", ip6));
+            let Some((_, v6port)) = parse_endpoint(addr) else {
+                return Err(format!("adresse \"{}\" invalide (attendu hote:port)", addr));
+            };
+            bind_addr = format!("[{}]:{}", ip6, v6port);
+            rep.log(format!(
+                "sur le PC emetteur (via Internet), renseignez : [{}]:{}",
+                ip6, v6port
+            ));
+        } else {
+            rep.log("IPv6 indisponible sur ce reseau, bascule sur IPv4".to_string());
+        }
+    }
+    if opts.upnp && bind_addr == addr {
         match upnp::add_port_mapping(port) {
             Ok(m) => {
                 rep.log(format!(
@@ -209,29 +227,47 @@ pub fn receive(
                 ));
                 upnp_map = Some(m);
             }
-            Err(e) => rep.log(format!(
-                "UPnP : {} (configurez la redirection manuellement sur la box)",
-                e
-            )),
+            Err(e) => {
+                rep.log(format!("UPnP : {} (tentative NAT-PMP en cours)", e));
+                match net::natpmp_add_mapping(port) {
+                    Ok(gw) => {
+                        natpmp_used = true;
+                        rep.log(format!(
+                            "redirection NAT-PMP active : port TCP {} -> ce PC (passerelle {})",
+                            port, gw
+                        ));
+                        rep.log(format!(
+                            "sur l'emetteur, lancez : DirTransfert send <repertoire> <IP_publique_de_la_box>:{}",
+                            port
+                        ));
+                    }
+                    Err(e2) => rep.log(format!(
+                        "NAT-PMP : {} (configurez la redirection manuellement sur la box)",
+                        e2
+                    )),
+                }
+            }
         }
     }
     let ip_locale = upnp::local_ip();
     if !ip_locale.is_empty() {
         rep.log(format!("IP locale de ce PC : {}", ip_locale));
     }
-    match upnp::get_external_ip() {
-        Ok(ip_pub) => {
-            rep.log(format!("IP publique de la box : {}", ip_pub));
-            rep.log(format!(
-                "sur le PC emetteur (meme reseau), renseignez : {}:{}",
-                ip_locale, port
-            ));
-            rep.log(format!(
-                "sur le PC emetteur (via Internet), renseignez : {}:{}",
-                ip_pub, port
-            ));
-            if ip_pub.starts_with("100.") && !ip_pub.starts_with("100.128.") {
-                rep.log("attention : IP en plage 100.64-127.x.x = CGNAT operateur, l'UPnP ne suffira pas, utilisez un VPN (Tailscale/WireGuard)".to_string());
+    match net::detect_net_mode() {
+        Ok((mode, ip_pub)) => {
+            rep.log(format!("IP publique : {} ({})", ip_pub, mode.label()));
+            if bind_addr == addr {
+                rep.log(format!(
+                    "sur le PC emetteur (meme reseau), renseignez : {}:{}",
+                    ip_locale, port
+                ));
+                rep.log(format!(
+                    "sur le PC emetteur (via Internet), renseignez : {}:{}",
+                    ip_pub, port
+                ));
+            }
+            if mode == net::NetMode::Cgnat {
+                rep.log("attention : IP en plage 100.64-127.x.x = CGNAT operateur, la redirection de port ne suffira pas, utilisez un VPN (Tailscale/WireGuard) ou IPv6".to_string());
             }
         }
         Err(e) => {
@@ -244,7 +280,7 @@ pub fn receive(
             rep.log(format!("IP publique : {} (via Internet, trouvez l'IP de la box sur son interface d'administration)", e));
         }
     }
-    let listener = TcpListener::bind(addr).map_err(|e| format!("liaison de {} : {}", addr, e))?;
+    let listener = TcpListener::bind(&bind_addr).map_err(|e| format!("liaison de {} : {}", addr, e))?;
     rep.log(format!("en ecoute sur {}", addr));
     let (sock, peer) = listener
         .accept()
@@ -391,6 +427,12 @@ pub fn receive(
                 "fermeture UPnP : {} (fermez le port manuellement)",
                 e
             )),
+        }
+    }
+    if natpmp_used {
+        match net::natpmp_delete_mapping() {
+            Ok(()) => rep.log("redirection NAT-PMP fermee".to_string()),
+            Err(e) => rep.log(format!("fermeture NAT-PMP : {} (fermez le port manuellement)", e)),
         }
     }
     if opts.close_fw_after {
