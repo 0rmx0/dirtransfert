@@ -289,7 +289,8 @@ pub fn receive(
             rep.log(format!("IP publique : {} (via Internet, trouvez l'IP de la box sur son interface d'administration)", e));
         }
     }
-    let listener = TcpListener::bind(&bind_addr).map_err(|e| format!("liaison de {} : {}", bind_addr, e))?;
+    let listener =
+        TcpListener::bind(&bind_addr).map_err(|e| format!("liaison de {} : {}", bind_addr, e))?;
     rep.log(format!("en ecoute sur {}", addr));
     listener
         .set_nonblocking(true)
@@ -453,7 +454,10 @@ pub fn receive(
     if natpmp_used {
         match net::natpmp_delete_mapping() {
             Ok(()) => rep.log("redirection NAT-PMP fermee".to_string()),
-            Err(e) => rep.log(format!("fermeture NAT-PMP : {} (fermez le port manuellement)", e)),
+            Err(e) => rep.log(format!(
+                "fermeture NAT-PMP : {} (fermez le port manuellement)",
+                e
+            )),
         }
     }
     if opts.close_fw_after {

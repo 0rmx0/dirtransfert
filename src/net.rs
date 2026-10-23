@@ -14,10 +14,7 @@ const IP_HTTP_SOURCES: &[&str] = &[
     "http://icanhazip.com/",
 ];
 
-const STUN_SERVERS: &[(&str, u16)] = &[
-    ("stun.l.google.com", 19302),
-    ("stun.cloudflare.com", 3478),
-];
+const STUN_SERVERS: &[(&str, u16)] = &[("stun.l.google.com", 19302), ("stun.cloudflare.com", 3478)];
 
 fn parse_ipv4(s: &str) -> Option<Ipv4Addr> {
     s.trim().parse::<Ipv4Addr>().ok()
@@ -35,11 +32,15 @@ fn http_get_body(url: &str) -> Result<String, String> {
         Some((h, p)) => (h, p.parse::<u16>().unwrap_or(80)),
         None => (hostport, 80),
     };
-    if let IpAddr::V6(_) = host.parse::<IpAddr>().unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)) {
+    if host
+        .parse::<IpAddr>()
+        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
+        .is_ipv6()
+    {
         return Err("hote IPv6 non supporte ici".into());
     }
-    let mut s = TcpStream::connect((host, port))
-        .map_err(|e| format!("connexion a {} : {}", url, e))?;
+    let mut s =
+        TcpStream::connect((host, port)).map_err(|e| format!("connexion a {} : {}", url, e))?;
     s.set_read_timeout(Some(HTTP_TIMEOUT)).ok();
     s.set_write_timeout(Some(HTTP_TIMEOUT)).ok();
     let req = format!(
@@ -80,12 +81,7 @@ fn addr_from_stun_attr(family: u8, port: u16, ip4: [u8; 4], xored: bool) -> Opti
     }
     let ip = if xored {
         let m = STUN_MAGIC.to_be_bytes();
-        [
-            ip4[0] ^ m[0],
-            ip4[1] ^ m[1],
-            ip4[2] ^ m[2],
-            ip4[3] ^ m[3],
-        ]
+        [ip4[0] ^ m[0], ip4[1] ^ m[1], ip4[2] ^ m[2], ip4[3] ^ m[3]]
     } else {
         ip4
     };
@@ -135,9 +131,7 @@ fn decode_stun_response(resp: &[u8]) -> Option<SocketAddr> {
 fn public_ip_stun() -> Result<Ipv4Addr, String> {
     let mut last = String::new();
     for (host, port) in STUN_SERVERS {
-        let addr = match std::net::ToSocketAddrs
-            ::to_socket_addrs(&(*host, *port))
-        {
+        let addr = match std::net::ToSocketAddrs::to_socket_addrs(&(*host, *port)) {
             Ok(mut it) => it.find(|a| a.is_ipv4()),
             Err(e) => {
                 last = format!("resolution de {} : {}", host, e);
@@ -215,10 +209,7 @@ pub fn global_ipv6() -> Option<IpAddr> {
     let ip = s.local_addr().ok()?.ip();
     match ip {
         IpAddr::V6(v6) => {
-            if (v6.segments()[0] & 0xfe00) != 0xfc00
-                && !ip.is_loopback()
-                && v6.segments()[0] != 0
-            {
+            if (v6.segments()[0] & 0xfe00) != 0xfc00 && !ip.is_loopback() && v6.segments()[0] != 0 {
                 Some(ip)
             } else {
                 None
@@ -305,12 +296,34 @@ pub fn natpmp_add_mapping(port: u16) -> Result<Ipv4Addr, String> {
     };
     let mut last = String::new();
     for gw in gateway_candidates(local) {
-        let udp_probe = [0u8, 1, 0, port.to_be_bytes()[0], port.to_be_bytes()[1], 0, 0, 0, 0, 60];
+        let udp_probe = [
+            0u8,
+            1,
+            0,
+            port.to_be_bytes()[0],
+            port.to_be_bytes()[1],
+            0,
+            0,
+            0,
+            0,
+            60,
+        ];
         if let Err(e) = natpmp_exchange(gw, &udp_probe, 129) {
             last = e;
             continue;
         }
-        let tcp_req = [0u8, 2, 0, port.to_be_bytes()[0], port.to_be_bytes()[1], 0, 0, 0, 0, 60];
+        let tcp_req = [
+            0u8,
+            2,
+            0,
+            port.to_be_bytes()[0],
+            port.to_be_bytes()[1],
+            0,
+            0,
+            0,
+            0,
+            60,
+        ];
         match natpmp_exchange(gw, &tcp_req, 130) {
             Ok(resp) if resp.len() >= 10 => {
                 return Ok(gw);
