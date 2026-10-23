@@ -118,6 +118,7 @@ pub struct App {
     upnp: bool,
     open_fw: bool,
     close_fw: bool,
+    prefer_ipv6: bool,
     code: String,
     code_error: Option<String>,
     running: bool,
@@ -150,6 +151,7 @@ impl Default for App {
             upnp: true,
             open_fw: true,
             close_fw: true,
+            prefer_ipv6: false,
             code_error: None,
             running: false,
             error: None,
@@ -216,6 +218,7 @@ impl App {
             open_fw: self.open_fw,
             close_fw_after: self.close_fw,
             pipeline: Some(self.pipeline),
+            prefer_ipv6: self.prefer_ipv6,
             cancel: Some(cancel),
         };
         let tx_err = tx.clone();
@@ -436,6 +439,13 @@ impl eframe::App for App {
                     egui::Checkbox::new(
                         &mut self.close_fw,
                         "Fermer pare-feu + UPnP apres le transfert",
+                    ),
+                );
+                ui.add_enabled(
+                    enabled,
+                    egui::Checkbox::new(
+                        &mut self.prefer_ipv6,
+                        "Ecouter en IPv6 si disponible (sinon IPv4)",
                     ),
                 );
                 ui.horizontal(|ui| {
@@ -737,5 +747,10 @@ mod tests {
         assert!(transfer::parse_endpoint("sansport").is_none());
         assert!(transfer::parse_endpoint(":47500").is_none());
         assert!(transfer::parse_endpoint("hote:pasunnombre").is_none());
+        let (h, p) = transfer::parse_endpoint("[2001:db8::1]:47500").unwrap();
+        assert_eq!(h, "2001:db8::1");
+        assert_eq!(p, 47500);
+        assert!(transfer::parse_endpoint("2001:db8::1").is_none());
+        assert!(transfer::parse_endpoint("[2001:db8::1]:pasunnombre").is_none());
     }
 }

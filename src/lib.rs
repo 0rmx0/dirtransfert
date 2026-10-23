@@ -3,6 +3,7 @@ pub mod crypto;
 pub mod firewall;
 pub mod gui;
 pub mod icon;
+pub mod net;
 pub mod protocol;
 pub mod transfer;
 pub mod upnp;

@@ -1,10 +1,10 @@
 use crate::crypto::SecureStream;
 use crate::firewall::RULE_NAME;
 use crate::protocol::*;
-use crate::{firewall, upnp};
+use crate::{firewall, net, upnp};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -115,8 +115,17 @@ fn load_existing_hashes(
 }
 
 pub fn parse_endpoint(s: &str) -> Option<(String, u16)> {
-    let (host, port) = s.rsplit_once(':')?;
-    if host.is_empty() {
+    let trimmed = s.trim();
+    if let Some(rest) = trimmed.strip_prefix('[') {
+        let (host, after) = rest.split_once(']')?;
+        let port = after.strip_prefix(':')?;
+        if port.is_empty() || port.contains(']') {
+            return None;
+        }
+        return port.parse::<u16>().ok().map(|p| (host.to_string(), p));
+    }
+    let (host, port) = trimmed.rsplit_once(':')?;
+    if host.is_empty() || host.contains(':') {
         return None;
     }
     port.parse::<u16>().ok().map(|p| (host.to_string(), p))
@@ -128,6 +137,7 @@ pub struct Opts {
     pub open_fw: bool,
     pub close_fw_after: bool,
     pub pipeline: Option<usize>,
+    pub prefer_ipv6: bool,
     pub cancel: Option<Arc<AtomicBool>>,
 }
 
@@ -191,7 +201,24 @@ pub fn receive(
         }
     }
     let mut upnp_map = None;
-    if opts.upnp {
+    let mut natpmp_used = false;
+    let mut bind_addr = addr.to_string();
+    if opts.prefer_ipv6 {
+        if let Some(ip6) = net::global_ipv6() {
+            rep.log(format!("IPv6 globale disponible : {}", ip6));
+            let Some((_, v6port)) = parse_endpoint(addr) else {
+                return Err(format!("adresse \"{}\" invalide (attendu hote:port)", addr));
+            };
+            bind_addr = format!("[{}]:{}", ip6, v6port);
+            rep.log(format!(
+                "sur le PC emetteur (via Internet), renseignez : [{}]:{}",
+                ip6, v6port
+            ));
+        } else {
+            rep.log("IPv6 indisponible sur ce reseau, bascule sur IPv4".to_string());
+        }
+    }
+    if opts.upnp && bind_addr == addr {
         match upnp::add_port_mapping(port) {
             Ok(m) => {
                 rep.log(format!(
@@ -209,29 +236,47 @@ pub fn receive(
                 ));
                 upnp_map = Some(m);
             }
-            Err(e) => rep.log(format!(
-                "UPnP : {} (configurez la redirection manuellement sur la box)",
-                e
-            )),
+            Err(e) => {
+                rep.log(format!("UPnP : {} (tentative NAT-PMP en cours)", e));
+                match net::natpmp_add_mapping(port) {
+                    Ok(gw) => {
+                        natpmp_used = true;
+                        rep.log(format!(
+                            "redirection NAT-PMP active : port TCP {} -> ce PC (passerelle {})",
+                            port, gw
+                        ));
+                        rep.log(format!(
+                            "sur l'emetteur, lancez : DirTransfert send <repertoire> <IP_publique_de_la_box>:{}",
+                            port
+                        ));
+                    }
+                    Err(e2) => rep.log(format!(
+                        "NAT-PMP : {} (configurez la redirection manuellement sur la box)",
+                        e2
+                    )),
+                }
+            }
         }
     }
     let ip_locale = upnp::local_ip();
     if !ip_locale.is_empty() {
         rep.log(format!("IP locale de ce PC : {}", ip_locale));
     }
-    match upnp::get_external_ip() {
-        Ok(ip_pub) => {
-            rep.log(format!("IP publique de la box : {}", ip_pub));
-            rep.log(format!(
-                "sur le PC emetteur (meme reseau), renseignez : {}:{}",
-                ip_locale, port
-            ));
-            rep.log(format!(
-                "sur le PC emetteur (via Internet), renseignez : {}:{}",
-                ip_pub, port
-            ));
-            if ip_pub.starts_with("100.") && !ip_pub.starts_with("100.128.") {
-                rep.log("attention : IP en plage 100.64-127.x.x = CGNAT operateur, l'UPnP ne suffira pas, utilisez un VPN (Tailscale/WireGuard)".to_string());
+    match net::detect_net_mode() {
+        Ok((mode, ip_pub)) => {
+            rep.log(format!("IP publique : {} ({})", ip_pub, mode.label()));
+            if bind_addr == addr {
+                rep.log(format!(
+                    "sur le PC emetteur (meme reseau), renseignez : {}:{}",
+                    ip_locale, port
+                ));
+                rep.log(format!(
+                    "sur le PC emetteur (via Internet), renseignez : {}:{}",
+                    ip_pub, port
+                ));
+            }
+            if mode == net::NetMode::Cgnat {
+                rep.log("attention : IP en plage 100.64-127.x.x = CGNAT operateur, la redirection de port ne suffira pas, utilisez un VPN (Tailscale/WireGuard) ou IPv6".to_string());
             }
         }
         Err(e) => {
@@ -244,11 +289,24 @@ pub fn receive(
             rep.log(format!("IP publique : {} (via Internet, trouvez l'IP de la box sur son interface d'administration)", e));
         }
     }
-    let listener = TcpListener::bind(addr).map_err(|e| format!("liaison de {} : {}", addr, e))?;
+    let listener =
+        TcpListener::bind(&bind_addr).map_err(|e| format!("liaison de {} : {}", bind_addr, e))?;
     rep.log(format!("en ecoute sur {}", addr));
-    let (sock, peer) = listener
-        .accept()
-        .map_err(|e| format!("acceptation : {}", e))?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|e| format!("mode non bloquant : {}", e))?;
+    let (sock, peer) = loop {
+        check_cancel(&opts.cancel)?;
+        match listener.accept() {
+            Ok(pair) => break pair,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => return Err(format!("acceptation : {}", e)),
+        }
+    };
+    sock.set_nonblocking(false)
+        .map_err(|e| format!("retour au mode bloquant : {}", e))?;
     rep.log(format!("connexion de {}", peer));
     let mut stream = SecureStream::server_handshake(sock, code)
         .map_err(|e| format!("poignee de main chiffree avec {} : {}", peer, e))?;
@@ -393,6 +451,15 @@ pub fn receive(
             )),
         }
     }
+    if natpmp_used {
+        match net::natpmp_delete_mapping() {
+            Ok(()) => rep.log("redirection NAT-PMP fermee".to_string()),
+            Err(e) => rep.log(format!(
+                "fermeture NAT-PMP : {} (fermez le port manuellement)",
+                e
+            )),
+        }
+    }
     if opts.close_fw_after {
         match firewall::remove_firewall_rule() {
             Ok(()) => rep.log(format!("regle pare-feu \"{}\" supprimee", RULE_NAME)),
@@ -452,8 +519,30 @@ pub fn send(
         addr
     ));
 
-    let sock = TcpStream::connect(addr).map_err(|e| format!("connexion a {} : {}", addr, e))?;
-    sock.set_nodelay(true).ok();
+    let addrs: Vec<std::net::SocketAddr> = addr
+        .to_socket_addrs()
+        .map_err(|e| format!("resolution de {} : {}", addr, e))?
+        .collect();
+    if addrs.is_empty() {
+        return Err(format!("aucune adresse trouvee pour {}", addr));
+    }
+    let sock = loop {
+        check_cancel(cancel)?;
+        let mut connected: Option<TcpStream> = None;
+        for sa in &addrs {
+            match TcpStream::connect_timeout(sa, Duration::from_secs(1)) {
+                Ok(s) => {
+                    let _ = s.set_nodelay(true);
+                    connected = Some(s);
+                    break;
+                }
+                Err(_) => continue,
+            }
+        }
+        if let Some(s) = connected {
+            break s;
+        }
+    };
     let mut stream = SecureStream::client_handshake(sock, code)
         .map_err(|e| format!("poignee de main chiffree avec {} : {}", addr, e))?;
     stream.set_timeouts(Some(IO_TIMEOUT), Some(IO_TIMEOUT));
