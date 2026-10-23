@@ -1,5 +1,5 @@
 //! Slint-based GUI for DirTransfert
-//! Migration from egui to Slint - Working version
+//! Migration from egui to Slint
 
 use dirtransfer::crypto;
 use dirtransfer::transfer::{self, Opts, Reporter};
@@ -17,6 +17,9 @@ slint::slint! {
     import { Button, CheckBox, HorizontalBox, LineEdit, ScrollView, Slider, TextEdit, VerticalBox } from "std-widgets.slint";
     
     export component AppWindow inherits Window {
+        // Dark background for readability
+        background: #1e1e1e;
+        
         in-out property<string> mode: "receive";
         in-out property<string> code;
         in-out property<string> dir;
@@ -34,17 +37,18 @@ slint::slint! {
         min-height: 560px;
         preferred-width: 800px;
         preferred-height: 600px;
-        background: #111111;
         
         VerticalBox {
             padding: 10px;
             spacing: 10px;
             
+            // Header
             HorizontalBox {
                 spacing: 10px;
-                TextEdit { text: "DirTransfert (Slint)"; enabled: false; font-size: 20px; }
+                TextEdit { text: "DirTransfert"; enabled: false; font-size: 20px; }
             }
             
+            // Mode selection
             HorizontalBox {
                 spacing: 10px;
                 TextEdit { text: "Mode:"; enabled: false; }
@@ -52,6 +56,7 @@ slint::slint! {
                 Button { text: "Recevoir"; clicked => { mode = "receive"; } }
             }
             
+            // Code section
             HorizontalBox {
                 spacing: 10px;
                 TextEdit { text: "Code:"; enabled: false; }
@@ -59,6 +64,7 @@ slint::slint! {
                 Button { text: "Generer"; clicked => { root.generate-code(); } }
             }
             
+            // Directory section
             HorizontalBox {
                 spacing: 10px;
                 TextEdit { text: "Repertoire:"; enabled: false; }
@@ -66,35 +72,38 @@ slint::slint! {
                 Button { text: "Parcourir"; clicked => { root.browse-dir(); } }
             }
             
+            // Address section
             HorizontalBox {
                 spacing: 10px;
                 TextEdit { text: "Adresse:"; enabled: false; }
                 LineEdit { text: addr; }
             }
             
+            // Options
             CheckBox { text: "UPnP"; checked: upnp; }
             CheckBox { text: "Pare-feu"; checked: open-fw; }
             CheckBox { text: "IPv6"; checked: prefer-ipv6; }
             CheckBox { text: "Fermer apres"; checked: close-fw; }
             
+            // Pipeline
             HorizontalBox {
                 spacing: 10px;
                 TextEdit { text: "Pipeline:"; enabled: false; }
                 Slider { value: pipeline; }
             }
             
+            // Action buttons
             HorizontalBox {
                 spacing: 10px;
-                Button { text: "Demarrer"; clicked => { root.start-transfer(); } }
+                Button { text: "Demarrer"; clicked => { root.start-transfer(); } enabled: !running; }
                 Button { text: "Annuler"; clicked => { root.cancel-transfer(); } enabled: running; }
             }
             
+            // Log area
             ScrollView {
                 height: 150px;
                 TextEdit { text: log-text; enabled: false; }
             }
-            
-            // Hidden timer for processing events
         }
         
         callback browse-dir();
@@ -127,7 +136,10 @@ impl Reporter for SlintReporter {
     }
 
     fn scan(&self, done: usize, total: usize, current: &str) {
-        let _ = self.tx.send(UiEvent::Log(format!("Analyse: {}/{}: {}", done, total, current)));
+        let _ = self.tx.send(UiEvent::Log(format!(
+            "Analyse: {}/{}: {}",
+            done, total, current
+        )));
     }
 
     fn progress(&self, sent: u64, total: u64, speed_mbps: f64, pct: u64) {
@@ -197,9 +209,11 @@ fn main() -> Result<(), slint::PlatformError> {
     let tx_clone = tx.clone();
     let ui_handle = ui.as_weak();
     ui.on_start_transfer(move || {
-        let ui = ui_handle.unwrap();
         let tx = tx_clone.clone();
-        start_transfer(&ui, tx);
+        let _ = tx.send(UiEvent::Log("Bouton Demarrer clique".into()));
+        if let Some(ui) = ui_handle.upgrade() {
+            start_transfer(&ui, tx);
+        }
     });
 
     let tx_clone = tx.clone();
@@ -211,14 +225,18 @@ fn main() -> Result<(), slint::PlatformError> {
     let ui_handle = ui.as_weak();
     let rx_ref_timer = rx_ref.clone();
     let timer = slint::Timer::default();
-    timer.start(slint::TimerMode::Repeated, Duration::from_millis(50), move || {
-        let rx = rx_ref_timer.borrow_mut();
-        while let Ok(event) = rx.try_recv() {
-            if let Some(ui) = ui_handle.upgrade() {
-                process_event(&ui, event);
+    timer.start(
+        slint::TimerMode::Repeated,
+        Duration::from_millis(50),
+        move || {
+            let rx = rx_ref_timer.borrow_mut();
+            while let Ok(event) = rx.try_recv() {
+                if let Some(ui) = ui_handle.upgrade() {
+                    process_event(&ui, event);
+                }
             }
-        }
-    });
+        },
+    );
 
     // Run the event loop
     ui.run()?;
@@ -234,7 +252,12 @@ fn process_event(ui: &AppWindow, event: UiEvent) {
             ui.set_log_text(new_log.into());
         }
         UiEvent::BrowseDir(path) => {
-            ui.set_dir(path.into());
+            let mode = ui.get_mode();
+            if mode == "send" {
+                ui.set_dir(path.into());
+            } else {
+                ui.set_out_dir(path.into());
+            }
         }
         UiEvent::BrowseOutDir(path) => {
             ui.set_out_dir(path.into());
@@ -246,7 +269,7 @@ fn process_event(ui: &AppWindow, event: UiEvent) {
             ui.set_code(code.into());
         }
         UiEvent::Cancel => {
-            // Handled elsewhere
+            // Cancel handled in transfer
         }
     }
 }
@@ -292,6 +315,14 @@ fn start_transfer(ui: &AppWindow, tx: Sender<UiEvent>) {
     // Validate address
     if addr.is_empty() {
         let _ = tx.send(UiEvent::Log("[erreur] Adresse non specifiee".into()));
+        return;
+    }
+
+    // Validate endpoint format
+    if transfer::parse_endpoint(&addr).is_none() {
+        let _ = tx.send(UiEvent::Log(
+            format!("[erreur] Adresse invalide : {}", addr),
+        ));
         return;
     }
 
