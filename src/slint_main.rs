@@ -67,7 +67,7 @@ slint::slint! {
                 font-family: "monospace";
                 font-size: 14px;
                 vertical-alignment: center;
-                horizontal-alignment: left;
+                horizontal-alignment: center;
                 overflow: elide;
             }
         }
