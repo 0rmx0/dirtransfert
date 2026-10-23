@@ -17,8 +17,10 @@ slint::slint! {
     import { Button, CheckBox, HorizontalBox, LineEdit, ScrollView, Slider, TextEdit, VerticalBox } from "std-widgets.slint";
     
     export component AppWindow inherits Window {
-        // Dark background for readability
-        background: #1e1e1e;
+        // R_M_X Design Charter colors
+        // NEANT: #111111, SURFACE: #222222, ENCRE: #FFFFFF, BRUME: #CCCCCC
+        // SPECTRE: #00FFFF, ETRANGE: #FF00FF, TERMINAL: #00FF7F, OMBRE: #555555
+        background: #111111;
         
         in-out property<string> mode: "receive";
         in-out property<string> code;
@@ -32,8 +34,11 @@ slint::slint! {
         in-out property<int> pipeline: 8;
         in-out property<bool> running: false;
         in-out property<string> log-text;
+        in-out property<string> pipeline-text: "8";
         
         min-width: 640px;
+        
+        callback pipeline-changed();
         min-height: 560px;
         preferred-width: 800px;
         preferred-height: 600px;
@@ -89,7 +94,8 @@ slint::slint! {
             HorizontalBox {
                 spacing: 10px;
                 TextEdit { text: "Pipeline:"; enabled: false; }
-                Slider { value: pipeline; }
+                Slider { value: pipeline; width: 200px; }
+                TextEdit { text: pipeline-text; enabled: false; }
             }
             
             // Action buttons
@@ -123,6 +129,7 @@ enum UiEvent {
     Cancel,
     SetRunning(bool),
     SetCode(String),
+    SetPipelineText(String),
 }
 
 // GUI Reporter
@@ -169,6 +176,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
     // Set initial values
     ui.set_code(crypto::gen_code().into());
+    ui.set_pipeline_text("8".into());
 
     // Create channel for events
     let (tx, rx) = channel();
@@ -204,6 +212,16 @@ fn main() -> Result<(), slint::PlatformError> {
         let tx = tx_clone.clone();
         let code = crypto::gen_code();
         let _ = tx.send(UiEvent::SetCode(code));
+    });
+
+    // Update pipeline text when slider changes
+    let tx_clone = tx.clone();
+    let ui_handle = ui.as_weak();
+    ui.on_pipeline_changed(move || {
+        let ui = ui_handle.unwrap();
+        let tx = tx_clone.clone();
+        let pipeline = ui.get_pipeline();
+        let _ = tx.send(UiEvent::SetPipelineText(pipeline.to_string()));
     });
 
     let tx_clone = tx.clone();
@@ -267,6 +285,9 @@ fn process_event(ui: &AppWindow, event: UiEvent) {
         }
         UiEvent::SetCode(code) => {
             ui.set_code(code.into());
+        }
+        UiEvent::SetPipelineText(text) => {
+            ui.set_pipeline_text(text.into());
         }
         UiEvent::Cancel => {
             // Cancel handled in transfer
