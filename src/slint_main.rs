@@ -246,7 +246,7 @@ slint::slint! {
 
                 // Header
                 Rectangle {
-                    height: 74px;
+                    height: 58px;
                     Text {
                         y: 0px;
                         height: 30px;
@@ -258,7 +258,7 @@ slint::slint! {
                         vertical-alignment: top;
                     }
                     Rectangle {
-                        y: 60px;
+                        y: 46px;
                         height: 1px;
                         background: RmxTheme.ombre;
                     }
