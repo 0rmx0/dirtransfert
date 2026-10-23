@@ -59,7 +59,7 @@ jobs:
           if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu pkg-config
             sudo dpkg --add-architecture arm64
-            sudo sh -c 'echo "Architectures: amd64,i386" >> /etc/apt/apt.conf.d/99-multiarch-restrict'
+            echo 'Architectures: "amd64,i386";' | sudo tee /etc/apt/apt.conf.d/99-multiarch-restrict > /dev/null
             printf 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble main universe\n' | sudo tee /etc/apt/sources.list.d/arm64.list
             sudo apt-get update
             sudo apt-get install -y libfontconfig1-dev:arm64
