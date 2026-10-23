@@ -1,3 +1,14 @@
+dirtransfert (0.5.0-1) unstable; urgency=medium
+
+  * New Slint UI with R_M_X design charter, replaces egui/eframe GUI.
+  * Fixed non-functional buttons (mode, start reading inputs, cancel token).
+  * Fixed truncated labels; monospace for technical data, centered values.
+  * Default listen address (0.0.0.0:47500) prefilled in receive mode.
+  * Resizable, scrollable log area.
+  * Removed eframe/egui stack; file picker uses XDG portal (no GTK).
+
+ -- 0rmx0 <0rmx0@users.noreply.github.com>  $(date -u '+%a, %d %b %Y %H:%M:%S +0000')
+
 dirtransfert (0.3.0-1) unstable; urgency=medium
 
   * Cancel button (GUI) and cancellation token in send/receive engine.
