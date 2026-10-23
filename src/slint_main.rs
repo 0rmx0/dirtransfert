@@ -398,15 +398,20 @@ slint::slint! {
                     border-radius: RmxTheme.radius;
                     vertical-stretch: 1;
                     min-height: 160px;
-                    ScrollView {
-                        Text {
-                            width: parent.width - 10px;
-                            x: 5px;
+                    log-scroll := ScrollView {
+                        x: 5px;
+                        y: 5px;
+                        width: parent.width - 10px;
+                        height: parent.height - 10px;
+                        content-height: max(self.visible-height, log-input.preferred-height);
+                        log-input := TextInput {
+                            read-only: true;
+                            single-line: false;
+                            wrap: word-wrap;
                             text: root.log-text;
                             color: RmxTheme.terminal;
                             font-family: "monospace";
                             font-size: 12px;
-                            wrap: word-wrap;
                         }
                     }
                 }
