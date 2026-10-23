@@ -248,11 +248,14 @@ slint::slint! {
                 Rectangle {
                     height: 74px;
                     Text {
+                        y: 0px;
+                        height: 30px;
                         text: "DirTransfert";
                         color: RmxTheme.encre;
                         font-size: 22px;
                         font-weight: 700;
                         horizontal-alignment: center;
+                        vertical-alignment: top;
                     }
                     Rectangle {
                         y: 60px;
