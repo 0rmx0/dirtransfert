@@ -1,15 +1,14 @@
-//! Slint-based GUI for DirTransfert
-//! Migration from egui to Slint
+//! Interface graphique Slint de DirTransfert
 
-use dirtransfer::crypto;
-use dirtransfer::transfer::{self, Opts, Reporter};
+use crate::crypto;
+use crate::transfer::{self, Opts, Reporter};
 use rfd::FileDialog;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -210,7 +209,7 @@ slint::slint! {
 
     export component AppWindow inherits Window {
         background: RmxTheme.neant;
-        
+
         in-out property <string> mode: "receive";
         in-out property <bool> mode-send: false;
         in-out property <string> code;
@@ -235,16 +234,16 @@ slint::slint! {
         callback start-transfer();
         callback cancel-transfer();
         callback dir-edited(string);
-        
+
         min-width: 680px;
         min-height: 640px;
         preferred-width: 820px;
         preferred-height: 660px;
-        
+
         VerticalLayout {
             padding: 16px;
             spacing: 12px;
-                
+
                 // Header
                 Rectangle {
                     height: 44px;
@@ -261,7 +260,7 @@ slint::slint! {
                         background: RmxTheme.ombre;
                     }
                 }
-                
+
                 // Mode selection
                 Rectangle {
                     height: 36px;
@@ -281,7 +280,7 @@ slint::slint! {
                         Rectangle { }
                     }
                 }
-                
+
                 // Code section
                 Rectangle {
                     height: 36px;
@@ -300,7 +299,7 @@ slint::slint! {
                         Rectangle { }
                     }
                 }
-                
+
                 // Directory section
                 Rectangle {
                     height: 36px;
@@ -319,7 +318,7 @@ slint::slint! {
                         Rectangle { }
                     }
                 }
-                
+
                 // Address section
                 Rectangle {
                     height: 36px;
@@ -334,7 +333,7 @@ slint::slint! {
                         Rectangle { }
                     }
                 }
-                
+
                 // Options
                 Rectangle {
                     height: 36px;
@@ -359,7 +358,7 @@ slint::slint! {
                         Rectangle { }
                     }
                 }
-                
+
                 // Pipeline
                 Rectangle {
                     height: 36px;
@@ -377,7 +376,7 @@ slint::slint! {
                         Rectangle { }
                     }
                 }
-                
+
                 // Action buttons
                 Rectangle {
                     height: 44px;
@@ -398,7 +397,7 @@ slint::slint! {
                         Rectangle { }
                     }
                 }
-                
+
                 // Log area
                 Rectangle {
                     background: RmxTheme.surface;
@@ -422,7 +421,7 @@ slint::slint! {
                         }
                     }
                 }
-                
+
                 // Footer / hidden layer
                 Rectangle {
                     height: 18px;
@@ -495,7 +494,7 @@ impl Reporter for SlintReporter {
     }
 }
 
-fn main() -> Result<(), slint::PlatformError> {
+pub fn run() -> Result<(), slint::PlatformError> {
     let ui = AppWindow::new()?;
 
     // Set initial values
@@ -563,7 +562,6 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         }
     });
-
 
     // Directory text edited: sync dir or out-dir depending on mode
     let ui_handle = ui.as_weak();
@@ -676,7 +674,9 @@ fn start_transfer(ui: &AppWindow, tx: Sender<UiEvent>, cancel: Arc<AtomicBool>) 
 
     // Validate paths
     if mode_send && dir.is_empty() {
-        let _ = tx.send(UiEvent::Log("[erreur] Repertoire a envoyer non specifie".into()));
+        let _ = tx.send(UiEvent::Log(
+            "[erreur] Repertoire a envoyer non specifie".into(),
+        ));
         return;
     }
 
@@ -695,9 +695,10 @@ fn start_transfer(ui: &AppWindow, tx: Sender<UiEvent>, cancel: Arc<AtomicBool>) 
 
     // Validate endpoint format
     if transfer::parse_endpoint(&addr).is_none() {
-        let _ = tx.send(UiEvent::Log(
-            format!("[erreur] Adresse invalide : {}", addr),
-        ));
+        let _ = tx.send(UiEvent::Log(format!(
+            "[erreur] Adresse invalide : {}",
+            addr
+        )));
         return;
     }
 
