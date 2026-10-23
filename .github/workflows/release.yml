@@ -23,7 +23,7 @@ jobs:
             os_name: linux-amd64
             target: x86_64-unknown-linux-gnu
             artifact: DirTransfert-linux-amd64.tar.gz
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             os_name: linux-arm64
             target: aarch64-unknown-linux-gnu
             artifact: DirTransfert-linux-arm64.tar.gz
@@ -56,22 +56,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libegl1-mesa-dev libfontconfig1-dev
-          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu pkg-config
-            sudo dpkg --add-architecture arm64
-            sudo sed -i 's/^Types:/Architectures: amd64\nTypes:/' /etc/apt/sources.list.d/*.sources
-            printf 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble main universe\n' | sudo tee /etc/apt/sources.list.d/arm64.list
-            sudo apt-get update
-            sudo apt-get install -y libfontconfig1-dev:arm64
-          fi
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          PKG_CONFIG_PATH: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig' || '' }}
-          PKG_CONFIG_ALLOW_CROSS: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '1' || '' }}
-          PKG_CONFIG_SYSROOT_DIR: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '/' || '' }}
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
