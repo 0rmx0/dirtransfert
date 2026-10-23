@@ -246,7 +246,7 @@ slint::slint! {
 
                 // Header
                 Rectangle {
-                    height: 60px;
+                    height: 74px;
                     Text {
                         text: "DirTransfert";
                         color: RmxTheme.encre;
@@ -255,7 +255,7 @@ slint::slint! {
                         horizontal-alignment: center;
                     }
                     Rectangle {
-                        y: 46px;
+                        y: 60px;
                         height: 1px;
                         background: RmxTheme.ombre;
                     }
