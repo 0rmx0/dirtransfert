@@ -3,6 +3,21 @@
 Les versions notables de DirTransfert. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 
 
+## [0.3.2] - 2026-10-23
+
+### Ajouté
+- **Détection IP publique multi-sources** : UPnP → services HTTP (ipify, ifconfig.me, AWS, icanhazip) → STUN (Google, Cloudflare).
+- **Détection du mode réseau** : affiche si l'on est en direct, NAT, ou CGNAT (avec avertissement spécifique).
+- **NAT-PMP/PCP** : tentative automatique de redirection de port si UPnP échoue, avec fermeture propre après le transfert.
+- **Support IPv6 littéral** : adresses de la forme `[2001:db8::1]:1234` sont maintenant acceptées en entrée et générées en sortie.
+- **Option `--ipv6`** (CLI) et case à cocher (GUI) pour forcer l'écoute sur l'adresse IPv6 globale si disponible.
+
+### Modifié
+- **Bouton Annuler effectif pendant l'attente de connexion** :
+  - Récepteur : `accept()` non-bloquant avec polling du flag d'annulation toutes les 100 ms.
+  - Émetteur : `connect_timeout` (1s) par adresse en boucle avec vérification d'annulation entre chaque tentative.
+  - Résolution multi-adresses via `to_socket_addrs()` permet de retenter même si le récepteur n'est pas encore prêt.
+
 ## [0.3.1] - 2026-10-16
 
 ### Ajouté
