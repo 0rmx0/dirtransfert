@@ -394,9 +394,10 @@ slint::slint! {
                 
                 // Log area
                 Rectangle {
-                    height: 160px;
                     background: RmxTheme.surface;
                     border-radius: RmxTheme.radius;
+                    vertical-stretch: 1;
+                    min-height: 160px;
                     ScrollView {
                         Text {
                             width: parent.width - 10px;
