@@ -684,6 +684,63 @@ mod tests {
     }
 
     #[test]
+    fn transfert_e2e_ipv6() {
+        let src_dir = std::env::temp_dir().join("dtx_e2e_ipv6_src");
+        let out_dir = std::env::temp_dir().join("dtx_e2e_ipv6_out");
+        let _ = std::fs::remove_dir_all(&src_dir);
+        let _ = std::fs::remove_dir_all(&out_dir);
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("test_ipv6.txt"), b"test ipv6 content").unwrap();
+
+        let listener = TcpListener::bind("[::1]:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (sock, _) = listener.accept().unwrap();
+            let mut stream = SecureStream::server_handshake(sock, "IPV6-TEST").unwrap();
+            stream.set_timeouts(Some(Duration::from_secs(30)), Some(Duration::from_secs(30)));
+            drop(listener);
+
+            let msg = read_msg(&mut stream).unwrap();
+            let manifest = Manifest::decode(&msg).unwrap();
+            assert_eq!(manifest.files.len(), 1);
+
+            let dest_root = std::env::temp_dir()
+                .join("dtx_e2e_ipv6_out")
+                .join(&manifest.root_name);
+            std::fs::create_dir_all(&dest_root).unwrap();
+            for entry in &manifest.files {
+                write_msg(&mut stream, entry.rel_path.as_bytes()).unwrap();
+                write_stream_atomically(
+                    &dest_root.join(rel_to_os(&entry.rel_path)),
+                    entry.size,
+                    entry.hash,
+                    |emit| loop {
+                        let (kind, data) = read_kind(&mut stream).map_err(|e| e.to_string())?;
+                        match kind {
+                            KIND_CHUNK => emit(&data)?,
+                            KIND_META if data.is_empty() => return Ok(()),
+                            _ => return Err("trame inattendue".into()),
+                        }
+                    },
+                )
+                .unwrap();
+            }
+            write_msg(&mut stream, b"OK").unwrap();
+        });
+
+        let rep = NullReporter;
+        let ipv6_addr = format!("[::1]:{}", port);
+        send(&src_dir, &ipv6_addr, "IPV6-TEST", &None, &rep).unwrap();
+        server.join().unwrap();
+
+        let content = std::fs::read(out_dir.join("dtx_e2e_ipv6_src/test_ipv6.txt")).unwrap();
+        assert_eq!(content, b"test ipv6 content");
+
+        let _ = std::fs::remove_dir_all(&src_dir);
+        let _ = std::fs::remove_dir_all(&out_dir);
+    }
+
+    #[test]
     fn ecriture_atomique_rejette_mauvais_hash() {
         let dest = std::env::temp_dir().join("dtx_bad_hash.txt");
         let bad = [0u8; 32];
