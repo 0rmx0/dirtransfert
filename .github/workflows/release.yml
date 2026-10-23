@@ -64,6 +64,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          RUST_FONTCONFIG_DLOPEN: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '1' || '' }}
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
