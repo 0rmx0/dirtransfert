@@ -106,6 +106,9 @@ slint::slint! {
         in property <bool> accent: false;
         in property <bool> primary: false;
         in property <bool> enabled: true;
+        in property <int> font-weight: 400;
+        in property <length> font-size: 14px;
+        in property <length> min-button-width: 90px;
         callback clicked();
         property <bool> hovered;
         property <bool> pressed;
@@ -127,14 +130,15 @@ slint::slint! {
             }
         ]
         border-radius: RmxTheme.radius;
-        border-width: 1px;
-        height: 34px;
-        min-width: 90px;
-        border-color: root.accent ? RmxTheme.etrange : RmxTheme.ombre;
+        border-width: root.primary || root.accent ? 2px : 1px;
+        height: root.primary ? 44px : 34px;
+        min-width: root.min-button-width;
+        border-color: root.primary ? RmxTheme.spectre : (root.accent ? RmxTheme.etrange : RmxTheme.ombre);
         label := Text {
             text: root.text;
             color: root.primary ? RmxTheme.neant : RmxTheme.encre;
-            font-size: 14px;
+            font-weight: root.font-weight;
+            font-size: root.font-size;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -218,7 +222,7 @@ slint::slint! {
         in-out property <bool> mode-send: false;
         in-out property <string> code;
         in-out property <string> dir;
-        in-out property <string> addr;
+        in-out property <string> addr: "0.0.0.0:47500";
         in-out property <string> out-dir;
         in-out property <bool> upnp: true;
         in-out property <bool> open-fw: true;
@@ -331,7 +335,7 @@ slint::slint! {
                         RmxLabel { text: "Adresse :"; }
                         RmxTextInput {
                             text <=> root.addr;
-                            placeholder: "0.0.0.0:47500";
+                            placeholder: "hote:port (ex. 192.168.1.20:47500)";
                         }
                         Rectangle { }
                     }
@@ -389,6 +393,9 @@ slint::slint! {
                             text: "Démarrer";
                             primary: true;
                             enabled: !root.running;
+                            font-weight: 800;
+                            font-size: 16px;
+                            min-button-width: 160px;
                             clicked => { root.start-transfer(); }
                         }
                         RmxButton {
@@ -538,12 +545,29 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     // Mode switching via dedicated callback
+    const DEFAULT_LISTEN_ADDR: &str = "0.0.0.0:47500";
     let ui_handle = ui.as_weak();
     ui.on_mode_set(move |mode| {
         if let Some(ui) = ui_handle.upgrade() {
-            ui.set_mode(mode.clone());
+            let prev: String = ui.get_mode().into();
+            let mode_str: String = mode.to_string();
+            if prev != mode_str {
+                // Restaure l'adresse d'ecoute par defaut quand on repasse en reception,
+                // a moins que l'utilisateur n'ait saisi une adresse personnalisee en mode envoi.
+                if mode == "receive" && ui.get_addr().is_empty() {
+                    ui.set_addr(DEFAULT_LISTEN_ADDR.into());
+                }
+                if mode == "send" {
+                    let addr: String = ui.get_addr().into();
+                    if addr == DEFAULT_LISTEN_ADDR {
+                        ui.set_addr("".into());
+                    }
+                }
+                ui.set_mode(mode.clone());
+            }
         }
     });
+
 
     // Directory text edited: sync dir or out-dir depending on mode
     let ui_handle = ui.as_weak();
