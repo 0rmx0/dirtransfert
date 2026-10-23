@@ -76,6 +76,7 @@ slint::slint! {
     component RmxTextInput inherits Rectangle {
         in-out property <string> text;
         in property <string> placeholder;
+        in property <TextHorizontalAlignment> h-alignment: left;
         callback edited(string);
         background: RmxTheme.surface;
         border-radius: RmxTheme.radius;
@@ -87,16 +88,21 @@ slint::slint! {
                 width: parent.width;
                 text <=> root.text;
                 color: RmxTheme.encre;
+                font-family: "monospace";
                 font-size: 14px;
+                horizontal-alignment: root.h-alignment;
                 vertical-alignment: center;
                 edited => { root.edited(self.text); }
             }
         }
         if (input.text == "" && !input.has-focus) : Text {
             x: 10px;
+            width: parent.width - 20px;
             text: root.placeholder;
             color: RmxTheme.ombre;
+            font-family: "monospace";
             font-size: 14px;
+            horizontal-alignment: root.h-alignment;
             vertical-alignment: center;
         }
     }
@@ -285,6 +291,7 @@ slint::slint! {
                         code-input := RmxTextInput {
                             text <=> root.code;
                             placeholder: "XXXX-XXXX";
+                            h-alignment: center;
                         }
                         RmxButton {
                             text: "Générer";
@@ -322,6 +329,7 @@ slint::slint! {
                         RmxTextInput {
                             text <=> root.addr;
                             placeholder: "hote:port (ex. 192.168.1.20:47500)";
+                            h-alignment: center;
                         }
                         Rectangle { }
                     }
