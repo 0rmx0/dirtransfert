@@ -1,116 +1,448 @@
-//! Slint-based GUI for DirTransfert
-//! Migration from egui to Slint
+//! Interface graphique Slint de DirTransfert
 
-use dirtransfer::crypto;
-use dirtransfer::transfer::{self, Opts, Reporter};
+use crate::crypto;
+use crate::transfer::{self, Opts, Reporter};
 use rfd::FileDialog;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::thread;
 use std::time::Duration;
 
 slint::slint! {
-    import { Button, CheckBox, HorizontalBox, LineEdit, ScrollView, Slider, TextEdit, VerticalBox } from "std-widgets.slint";
-    
-    export component AppWindow inherits Window {
-        // Dark background for readability
-        background: #1e1e1e;
-        
-        in-out property<string> mode: "receive";
-        in-out property<string> code;
-        in-out property<string> dir;
-        in-out property<string> addr: "0.0.0.0:47500";
-        in-out property<string> out-dir;
-        in-out property<bool> upnp: true;
-        in-out property<bool> open-fw: true;
-        in-out property<bool> close-fw: true;
-        in-out property<bool> prefer-ipv6: false;
-        in-out property<int> pipeline: 8;
-        in-out property<bool> running: false;
-        in-out property<string> log-text;
-        
-        min-width: 640px;
-        min-height: 560px;
-        preferred-width: 800px;
-        preferred-height: 600px;
-        
-        VerticalBox {
-            padding: 10px;
-            spacing: 10px;
-            
-            // Header
-            HorizontalBox {
-                spacing: 10px;
-                TextEdit { text: "DirTransfert"; enabled: false; font-size: 20px; }
-            }
-            
-            // Mode selection
-            HorizontalBox {
-                spacing: 10px;
-                TextEdit { text: "Mode:"; enabled: false; }
-                Button { text: "Envoyer"; clicked => { mode = "send"; } }
-                Button { text: "Recevoir"; clicked => { mode = "receive"; } }
-            }
-            
-            // Code section
-            HorizontalBox {
-                spacing: 10px;
-                TextEdit { text: "Code:"; enabled: false; }
-                LineEdit { text: code; placeholder-text: "XXXX-XXXX"; }
-                Button { text: "Generer"; clicked => { root.generate-code(); } }
-            }
-            
-            // Directory section
-            HorizontalBox {
-                spacing: 10px;
-                TextEdit { text: "Repertoire:"; enabled: false; }
-                LineEdit { text: dir; }
-                Button { text: "Parcourir"; clicked => { root.browse-dir(); } }
-            }
-            
-            // Address section
-            HorizontalBox {
-                spacing: 10px;
-                TextEdit { text: "Adresse:"; enabled: false; }
-                LineEdit { text: addr; }
-            }
-            
-            // Options
-            CheckBox { text: "UPnP"; checked: upnp; }
-            CheckBox { text: "Pare-feu"; checked: open-fw; }
-            CheckBox { text: "IPv6"; checked: prefer-ipv6; }
-            CheckBox { text: "Fermer apres"; checked: close-fw; }
-            
-            // Pipeline
-            HorizontalBox {
-                spacing: 10px;
-                TextEdit { text: "Pipeline:"; enabled: false; }
-                Slider { value: pipeline; }
-            }
-            
-            // Action buttons
-            HorizontalBox {
-                spacing: 10px;
-                Button { text: "Demarrer"; clicked => { root.start-transfer(); } enabled: !running; }
-                Button { text: "Annuler"; clicked => { root.cancel-transfer(); } enabled: running; }
-            }
-            
-            // Log area
-            ScrollView {
-                height: 150px;
-                TextEdit { text: log-text; enabled: false; }
+    import { Button, CheckBox, LineEdit, ScrollView, Slider } from "std-widgets.slint";
+
+    // ---- Charte graphique R_M_X ----
+    // NEANT #111111, SURFACE #222222, ENCRE #FFFFFF, BRUME #CCCCCC
+    // SPECTRE #00FFFF, ETRANGE #FF00FF, TERMINAL #00FF7F, OMBRE #555555
+    global RmxTheme {
+        out property <color> neant: #111111;
+        out property <color> surface: #222222;
+        out property <color> encre: #FFFFFF;
+        out property <color> brume: #CCCCCC;
+        out property <color> spectre: #00FFFF;
+        out property <color> etrange: #FF00FF;
+        out property <color> terminal: #00FF7F;
+        out property <color> ombre: #555555;
+        out property <length> radius: 10px;
+    }
+
+    component RmxLabel inherits Rectangle {
+        in property <string> text;
+        in property <length> min-label-width: 90px;
+        in property <bool> highlight: false;
+        in property <TextHorizontalAlignment> h-alignment: left;
+        height: 30px;
+        min-width: min-label-width;
+        Rectangle {
+            width: parent.width;
+            Text {
+                width: parent.width;
+                text: root.text;
+                color: root.highlight ? RmxTheme.spectre : RmxTheme.brume;
+                font-size: 14px;
+                vertical-alignment: center;
+                horizontal-alignment: root.h-alignment;
+                overflow: elide;
             }
         }
-        
+    }
+
+    component RmxValue inherits Rectangle {
+        in property <string> text;
+        background: RmxTheme.surface;
+        border-radius: RmxTheme.radius;
+        height: 32px;
+        min-width: 120px;
+        Rectangle {
+            width: parent.width;
+            Text {
+                width: parent.width;
+                text: root.text;
+                color: RmxTheme.terminal;
+                font-family: "monospace";
+                font-size: 14px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+
+    component RmxTextInput inherits Rectangle {
+        in-out property <string> text;
+        in property <string> placeholder;
+        in property <TextHorizontalAlignment> h-alignment: left;
+        callback edited(string);
+        background: RmxTheme.surface;
+        border-radius: RmxTheme.radius;
+        height: 32px;
+        min-width: 120px;
+        forward-focus: input;
+        TextInput {
+            input := TextInput {
+                width: parent.width;
+                text <=> root.text;
+                color: RmxTheme.encre;
+                font-family: "monospace";
+                font-size: 14px;
+                horizontal-alignment: root.h-alignment;
+                vertical-alignment: center;
+                edited => { root.edited(self.text); }
+            }
+        }
+        if (input.text == "" && !input.has-focus) : Text {
+            x: 10px;
+            width: parent.width - 20px;
+            text: root.placeholder;
+            color: RmxTheme.ombre;
+            font-family: "monospace";
+            font-size: 14px;
+            horizontal-alignment: root.h-alignment;
+            vertical-alignment: center;
+        }
+    }
+
+    component RmxButton inherits Rectangle {
+        in property <string> text;
+        in property <bool> accent: false;
+        in property <bool> primary: false;
+        in property <bool> enabled: true;
+        in property <int> font-weight: 400;
+        in property <length> font-size: 14px;
+        in property <length> min-button-width: 90px;
+        callback clicked();
+        property <bool> hovered;
+        property <bool> pressed;
+        property <bool> down: pressed && hovered;
+        background: !root.enabled ? RmxTheme.surface
+            : root.primary ? (root.down ? #00cccc : (root.hovered ? #33ffff : RmxTheme.spectre))
+            : (root.down ? RmxTheme.surface : (root.hovered ? #2a2a2a : RmxTheme.surface));
+        border-radius: RmxTheme.radius;
+        border-width: root.primary || root.accent ? 2px : 1px;
+        height: 34px;
+        min-width: root.min-button-width;
+        border-color: root.primary ? RmxTheme.spectre : (root.accent ? RmxTheme.etrange : RmxTheme.ombre);
+        label := Text {
+            text: root.text;
+            color: !root.enabled ? RmxTheme.ombre : (root.primary ? RmxTheme.neant : RmxTheme.encre);
+            font-weight: root.font-weight;
+            font-size: root.font-size;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        touch := TouchArea {
+            visible: root.enabled;
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+            changed has-hover => { root.hovered = self.has-hover; }
+            pointer-event => {
+                root.pressed = self.pressed;
+            }
+        }
+    }
+
+    component RmxCheckBox inherits Rectangle {
+        in property <string> text;
+        in-out property <bool> checked;
+        callback toggled();
+        property <bool> hovered;
+        border-radius: RmxTheme.radius;
+        height: 28px;
+        HorizontalLayout {
+            padding-left: 2px;
+            spacing: 8px;
+            box-wrapper := Rectangle {
+                width: 18px;
+                box := Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 5px;
+                    border-width: 1px;
+                    border-color: root.checked ? RmxTheme.spectre : RmxTheme.ombre;
+                    background: root.checked ? RmxTheme.spectre : RmxTheme.neant;
+                    if root.checked: Text {
+                        text: "×";
+                        color: RmxTheme.neant;
+                        font-size: 14px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.checked = !root.checked;
+                        root.toggled();
+                    }
+                    changed has-hover => {
+                        root.hovered = self.has-hover;
+                    }
+                }
+            }
+            Text {
+                text: root.text;
+                color: RmxTheme.brume;
+                font-size: 14px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+
+    component RmxSlider inherits Rectangle {
+        in-out property <float> value;
+        callback changed(float);
+        height: 28px;
+        HorizontalLayout {
+            Slider {
+                value <=> root.value;
+                changed(value) => { root.changed(self.value); }
+            }
+        }
+    }
+
+
+    export component AppWindow inherits Window {
+        background: RmxTheme.neant;
+
+        in-out property <string> mode: "receive";
+        in-out property <bool> mode-send: false;
+        in-out property <string> code;
+        in-out property <string> dir;
+        in-out property <string> addr: "0.0.0.0:47500";
+        in-out property <string> out-dir;
+        in-out property <bool> upnp: true;
+        in-out property <bool> open-fw: true;
+        in-out property <bool> close-fw: true;
+        in-out property <bool> prefer-ipv6: false;
+        in-out property <int> pipeline: 8;
+        in-out property <float> pipeline-float: 8;
+        in-out property <bool> running: false;
+        in-out property <string> log-text;
+        in-out property <string> pipeline-text: "8";
+        in-out property <string> hidden: "Um1YIHdvcmsgaW4gc2hhZG93cywgYXVkaW8gaW4gdGhlIHdpcmVzLgo=";
+
+        callback mode-set(string);
         callback browse-dir();
         callback browse-out-dir();
         callback generate-code();
         callback start-transfer();
         callback cancel-transfer();
+        callback dir-edited(string);
+
+        min-width: 680px;
+        min-height: 640px;
+        preferred-width: 820px;
+        preferred-height: 660px;
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+
+                // Header
+                Rectangle {
+                    height: 58px;
+                    Text {
+                        y: 0px;
+                        height: 30px;
+                        text: "DirTransfert";
+                        color: RmxTheme.encre;
+                        font-size: 22px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: top;
+                    }
+                    Rectangle {
+                        y: 46px;
+                        height: 1px;
+                        background: RmxTheme.ombre;
+                    }
+                }
+
+                // Mode selection
+                Rectangle {
+                    height: 36px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        RmxLabel { text: "Mode :"; }
+                        RmxButton {
+                            text: "Envoyer";
+                            accent: root.mode == "send";
+                            clicked => { mode-set("send"); }
+                        }
+                        RmxButton {
+                            text: "Recevoir";
+                            accent: root.mode == "receive";
+                            clicked => { mode-set("receive"); }
+                        }
+                        Rectangle { }
+                    }
+                }
+
+                // Code section
+                Rectangle {
+                    height: 36px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        RmxLabel { text: "Code :"; }
+                        code-input := RmxTextInput {
+                            text <=> root.code;
+                            placeholder: "XXXX-XXXX";
+                            h-alignment: center;
+                        }
+                        RmxButton {
+                            text: "Générer";
+                            clicked => { root.generate-code(); }
+                        }
+                        Rectangle { }
+                    }
+                }
+
+                // Directory section
+                Rectangle {
+                    height: 36px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        RmxLabel { text: root.mode == "send" ? "Répertoire :" : "Réception :"; min-label-width: 110px; }
+                        RmxTextInput {
+                            text: root.mode == "send" ? root.dir : root.out-dir;
+                            placeholder: "/chemin/vers/repertoire";
+                            edited(text) => { root.dir-edited(text); }
+                        }
+                        RmxButton {
+                            text: "Parcourir";
+                            clicked => { root.mode == "send" ? root.browse-dir() : root.browse-out-dir(); }
+                        }
+                        Rectangle { }
+                    }
+                }
+
+                // Address section
+                Rectangle {
+                    height: 36px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        RmxLabel { text: "Adresse :"; }
+                        RmxTextInput {
+                            text <=> root.addr;
+                            placeholder: "hote:port (ex. 192.168.1.20:47500)";
+                            h-alignment: center;
+                        }
+                        Rectangle { }
+                    }
+                }
+
+                // Options
+                Rectangle {
+                    height: 36px;
+                    HorizontalLayout {
+                        spacing: 20px;
+                        RmxCheckBox {
+                            text: "UPnP";
+                            checked <=> root.upnp;
+                        }
+                        RmxCheckBox {
+                            text: "Pare-feu";
+                            checked <=> root.open-fw;
+                        }
+                        RmxCheckBox {
+                            text: "IPv6";
+                            checked <=> root.prefer-ipv6;
+                        }
+                        RmxCheckBox {
+                            text: "Fermer après";
+                            checked <=> root.close-fw;
+                        }
+                        Rectangle { }
+                    }
+                }
+
+                // Pipeline
+                Rectangle {
+                    height: 36px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        RmxLabel { text: "Pipeline :"; }
+                        RmxSlider {
+                            value <=> root.pipeline-float;
+                            changed(value) => {
+                                root.pipeline-text = "N=" + floor(value);
+                                root.pipeline = round(value);
+                            }
+                        }
+                        RmxValue { text: root.pipeline-text; min-width: 60px; }
+                        Rectangle { }
+                    }
+                }
+
+                // Action buttons
+                Rectangle {
+                    height: 44px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        RmxButton {
+                            text: "Démarrer";
+                            primary: true;
+                            enabled: !root.running;
+                            clicked => { root.start-transfer(); }
+                        }
+                        RmxButton {
+                            text: "Annuler";
+                            accent: true;
+                            enabled: root.running;
+                            clicked => { root.cancel-transfer(); }
+                        }
+                        Rectangle { }
+                    }
+                }
+
+                // Log area
+                Rectangle {
+                    background: RmxTheme.surface;
+                    border-radius: RmxTheme.radius;
+                    vertical-stretch: 1;
+                    min-height: 160px;
+                    log-scroll := ScrollView {
+                        x: 5px;
+                        y: 5px;
+                        width: parent.width - 10px;
+                        height: parent.height - 10px;
+                        content-height: max(self.visible-height, log-input.preferred-height);
+                        log-input := TextInput {
+                            read-only: true;
+                            single-line: false;
+                            wrap: word-wrap;
+                            text: root.log-text;
+                            color: RmxTheme.terminal;
+                            font-family: "monospace";
+                            font-size: 12px;
+                        }
+                    }
+                }
+
+                // Footer / hidden layer
+                Rectangle {
+                    height: 18px;
+                    Text {
+                        text: root.hidden;
+                        color: #2a2a2a;
+                        font-family: "monospace";
+                        font-size: 9px;
+                        horizontal-alignment: center;
+                    }
+        // La couche cachée ne s'explique pas, elle se cherche.
+                    Rectangle {
+                        y: 16px;
+                        height: 1px;
+                        background: #2a2a2a;
+                    }
+                }
+        }
     }
 }
 
@@ -120,6 +452,7 @@ enum UiEvent {
     Log(String),
     BrowseDir(String),
     BrowseOutDir(String),
+    #[allow(dead_code)]
     Cancel,
     SetRunning(bool),
     SetCode(String),
@@ -164,17 +497,21 @@ impl Reporter for SlintReporter {
     }
 }
 
-fn main() -> Result<(), slint::PlatformError> {
+pub fn run() -> Result<(), slint::PlatformError> {
     let ui = AppWindow::new()?;
 
     // Set initial values
     ui.set_code(crypto::gen_code().into());
+    ui.set_pipeline_text("N=8".into());
 
     // Create channel for events
     let (tx, rx) = channel();
 
     // Store receiver in Rc<RefCell> so we can access it from callbacks
     let rx_ref = Rc::new(RefCell::new(rx));
+
+    // Shared cancel flag
+    let cancel_flag = Arc::new(AtomicBool::new(false));
 
     // Set up callbacks
     let tx_clone = tx.clone();
@@ -201,24 +538,65 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let tx_clone = tx.clone();
     ui.on_generate_code(move || {
-        let tx = tx_clone.clone();
         let code = crypto::gen_code();
-        let _ = tx.send(UiEvent::SetCode(code));
+        let _ = tx_clone.send(UiEvent::SetCode(code));
     });
 
-    let tx_clone = tx.clone();
+    // Mode switching via dedicated callback
+    const DEFAULT_LISTEN_ADDR: &str = "0.0.0.0:47500";
     let ui_handle = ui.as_weak();
-    ui.on_start_transfer(move || {
-        let tx = tx_clone.clone();
-        let _ = tx.send(UiEvent::Log("Bouton Demarrer clique".into()));
+    ui.on_mode_set(move |mode| {
         if let Some(ui) = ui_handle.upgrade() {
-            start_transfer(&ui, tx);
+            let prev: String = ui.get_mode().into();
+            let mode_str: String = mode.to_string();
+            if prev != mode_str {
+                // Restaure l'adresse d'ecoute par defaut quand on repasse en reception,
+                // a moins que l'utilisateur n'ait saisi une adresse personnalisee en mode envoi.
+                if mode == "receive" && ui.get_addr().is_empty() {
+                    ui.set_addr(DEFAULT_LISTEN_ADDR.into());
+                }
+                if mode == "send" {
+                    let addr: String = ui.get_addr().into();
+                    if addr == DEFAULT_LISTEN_ADDR {
+                        ui.set_addr("".into());
+                    }
+                }
+                ui.set_mode(mode.clone());
+            }
+        }
+    });
+
+    // Directory text edited: sync dir or out-dir depending on mode
+    let ui_handle = ui.as_weak();
+    ui.on_dir_edited(move |text| {
+        if let Some(ui) = ui_handle.upgrade() {
+            let mode: String = ui.get_mode().into();
+            if mode == "send" {
+                ui.set_dir(text.clone());
+            } else {
+                ui.set_out_dir(text.clone());
+            }
         }
     });
 
     let tx_clone = tx.clone();
+    let ui_handle = ui.as_weak();
+    let cancel_handle = cancel_flag.clone();
+    ui.on_start_transfer(move || {
+        let tx = tx_clone.clone();
+        let _ = tx.send(UiEvent::Log("Bouton Demarrer clique".into()));
+        if let Some(ui) = ui_handle.upgrade() {
+            // Reset cancel flag
+            cancel_handle.store(false, Ordering::SeqCst);
+            start_transfer(&ui, tx, cancel_handle.clone());
+        }
+    });
+
+    let tx_clone = tx.clone();
+    let cancel_handle = cancel_flag.clone();
     ui.on_cancel_transfer(move || {
-        let _ = tx_clone.send(UiEvent::Cancel);
+        cancel_handle.store(true, Ordering::SeqCst);
+        let _ = tx_clone.send(UiEvent::Log("Annulation demandee...".into()));
     });
 
     // Set up timer to process events
@@ -252,7 +630,7 @@ fn process_event(ui: &AppWindow, event: UiEvent) {
             ui.set_log_text(new_log.into());
         }
         UiEvent::BrowseDir(path) => {
-            let mode = ui.get_mode();
+            let mode: String = ui.get_mode().into();
             if mode == "send" {
                 ui.set_dir(path.into());
             } else {
@@ -268,13 +646,11 @@ fn process_event(ui: &AppWindow, event: UiEvent) {
         UiEvent::SetCode(code) => {
             ui.set_code(code.into());
         }
-        UiEvent::Cancel => {
-            // Cancel handled in transfer
-        }
+        UiEvent::Cancel => {}
     }
 }
 
-fn start_transfer(ui: &AppWindow, tx: Sender<UiEvent>) {
+fn start_transfer(ui: &AppWindow, tx: Sender<UiEvent>, cancel: Arc<AtomicBool>) {
     let mode_str: String = ui.get_mode().into();
     let mode_send = mode_str == "send";
     let code: String = ui.get_code().into();
@@ -301,7 +677,9 @@ fn start_transfer(ui: &AppWindow, tx: Sender<UiEvent>) {
 
     // Validate paths
     if mode_send && dir.is_empty() {
-        let _ = tx.send(UiEvent::Log("[erreur] Repertoire a envoyer non specifie".into()));
+        let _ = tx.send(UiEvent::Log(
+            "[erreur] Repertoire a envoyer non specifie".into(),
+        ));
         return;
     }
 
@@ -320,9 +698,10 @@ fn start_transfer(ui: &AppWindow, tx: Sender<UiEvent>) {
 
     // Validate endpoint format
     if transfer::parse_endpoint(&addr).is_none() {
-        let _ = tx.send(UiEvent::Log(
-            format!("[erreur] Adresse invalide : {}", addr),
-        ));
+        let _ = tx.send(UiEvent::Log(format!(
+            "[erreur] Adresse invalide : {}",
+            addr
+        )));
         return;
     }
 
@@ -336,7 +715,6 @@ fn start_transfer(ui: &AppWindow, tx: Sender<UiEvent>) {
         let rep = SlintReporter {
             tx: tx_thread.clone(),
         };
-        let cancel = Arc::new(AtomicBool::new(false));
 
         let opts = Opts {
             upnp,

@@ -3,6 +3,21 @@
 Les versions notables de DirTransfert. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 
 
+## [0.5.0] - 2026-10-23
+
+### Ajouté
+- **UI Slint avec charte graphique R_M_X** : fond noir profond `#111111`, surfaces `#222222`, accents néon cyan/magenta, vert terminal pour les données, rayon 10px, couche cachée.
+- **Adresse d'écoute par défaut** (`0.0.0.0:47500`) pré-remplie en réception, effacée en mode envoi.
+- **Journal avec scrollbar** : le journal s'agrandit avec la fenêtre et défile indépendamment du reste de l'interface.
+
+### Modifié
+- **Boutons fonctionnels** : mode Envoyer/Recevoir, Démarrer lit les valeurs saisies (bindings bidirectionnels), Annuler positionne le jeton d'annulation.
+- **Textes non tronqués** : libellés avec elide, valeurs centrées (code, adresse, pipeline), données techniques en monospace.
+
+### Supprimé
+- **Ancienne UI egui/eframe** (`src/gui.rs`, `src/icon.rs`, binaire séparé, backend `--render=`) : l'UI Slint devient l'interface par défaut.
+- **Dépendance GTK** : le sélecteur de fichiers passe au portail XDG (`xdg-portal`).
+
 ## [0.3.2] - 2026-10-23
 
 ### Ajouté

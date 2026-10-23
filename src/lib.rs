@@ -1,9 +1,9 @@
 pub mod cli;
 pub mod crypto;
 pub mod firewall;
-pub mod gui;
-pub mod icon;
 pub mod net;
 pub mod protocol;
+#[cfg(feature = "slint-ui")]
+pub mod slint_main;
 pub mod transfer;
 pub mod upnp;

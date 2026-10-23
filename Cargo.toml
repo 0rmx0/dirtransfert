@@ -1,6 +1,6 @@
 [package]
 name = "dirtransfer"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 description = "Outil de transfert de repertoire via TCP chiffre (ChaCha20-Poly1305, code de jumelage) avec verification SHA-256 et reprise"
 license = "MIT"
@@ -12,18 +12,12 @@ categories = ["command-line-utilities", "gui"]
 name = "DirTransfert"
 path = "src/main.rs"
 
-[[bin]]
-name = "DirTransfert-slint"
-path = "src/slint_main.rs"
-required-features = ["slint-ui"]
-
 [profile.release]
 lto = true
 strip = true
 
 [dependencies]
-eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "links", "wayland", "x11", "glow", "wgpu"], optional = true }
-rfd = { version = "0.17.2", features = ["default"] }
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"], optional = true }
 slint = { version = "1.18", default-features = false, features = ["std", "renderer-skia", "backend-winit", "compat-1-18"], optional = true }
 
 # Chiffrement du flux (option 2 : code de jumelage + AEAD)
@@ -33,9 +27,8 @@ rand = "0.9"
 sha2 = "0.10"
 
 [features]
-default = ["eframe-ui"]
-slint-ui = ["slint"]
-eframe-ui = ["eframe"]
+default = ["slint-ui"]
+slint-ui = ["slint", "rfd"]
 
 [build-dependencies]
 winresource = "0.1"
@@ -45,7 +38,7 @@ maintainer = "0rmx0"
 copyright = "2025, 0rmx0"
 license-file = ["LICENSE"]
 extended-description-file = "README.md"
-depends = "libgl1, libegl1, libxkbcommon0, libwayland-client0"
+depends = "libgl1, libegl1, libxkbcommon0, libwayland-client0, libfontconfig1"
 section = "utils"
 priority = "optional"
 changelog = "debian/changelog"

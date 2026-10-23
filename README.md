@@ -4,7 +4,7 @@
 
 Outil de transfert d'un répertoire complet (et ses sous-répertoires) entre deux PC, **décentralisé** : aucun serveur tiers, le transfert se fait en direct (TCP) entre les deux machines. Conçu pour plusieurs milliers de fichiers et plusieurs dizaines de Go.
 
-- **GUI** (egui) par défaut, **CLI** derrière `--cli`
+- **GUI** (Slint) par défaut, **CLI** derrière `--cli`
 - Windows, **Linux**, macOS
 - Zéro dépendance externe pour la logique métier : protocole et UPnP écrits à la main (le chiffrement délègue aux crates RustCrypto `chacha20poly1305`, `argon2`, `rand`, et le hachage au crate `sha2`)
 
@@ -43,7 +43,7 @@ cargo build --release
 
 Le binaire est `target/release/DirTransfert` (`.exe` sous Windows). C'est un fichier autonome, aucun runtime requis.
 
-> Sous Linux, la GUI (egui + sélecteur de fichiers GTK) requiert `libgtk-3` et OpenGL — installés par défaut sur la plupart des distributions de bureau (Ubuntu inclus).
+> Sous Linux, la GUI (Slint) requiert les bibliothèques graphiques standard (fontconfig, Wayland/X11) — installées par défaut sur la plupart des distributions de bureau (Ubuntu inclus).
 
 ## Utilisation
 
@@ -144,7 +144,7 @@ Le code n'est jamais transmis sur le réseau : seule une preuve SHA-256 (hello a
 - `src/upnp.rs` — client UPnP-IGD en pur Rust : découverte SSDP, description XML, appels SOAP `AddPortMapping`/`GetExternalIPAddress`/`DeletePortMapping`.
 - `src/firewall.rs` — règles `netsh advfirewall` pour le pare-feu Windows (règle entrante `DirTransfert`).
 - `src/transfer.rs` — cœur du transfert (send/receive) avec callbacks de progression, partagé par le CLI et la GUI.
-- `src/gui.rs` — interface graphique egui/eframe (renderer OpenGL), transfert et dialogue de sélection de dossier dans des threads dédiés.
+- `src/slint_main.rs` — interface graphique Slint (charte graphique R_M_X), transfert et dialogue de sélection de dossier dans des threads dédiés.
 - `src/cli.rs` — interface en ligne de commande.
 
 ## Tests
@@ -161,7 +161,7 @@ Distribué sous licence [MIT](LICENSE).
 
 ## Icône de l'application
 
-L'icône R_M_X (`assets/`) est appliquée à la fenêtre au lancement (`src/icon.rs` embarque les pixels RGBA), donc visible dans la barre des tâches et le dock :
+L'icône R_M_X (`assets/`) est embarquée dans l'exécutable — visible dans la barre des tâches et le dock :
 
 - **Linux** : icône de fenêtre via le protocole Wayland/X11 (aucune étape supplémentaire).
 - **Windows** : en plus de l'icône de fenêtre, l'icône est embarquée dans l'exécutable via `build.rs` + `assets/icon.ico` (`winresource`). `cargo build --release` suffit ; pour la barre des tâches, Windows peut mettre en cache l'icône des exécutables renommés — lancer depuis un chemin stable.
