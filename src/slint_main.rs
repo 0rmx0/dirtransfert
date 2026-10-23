@@ -235,10 +235,9 @@ slint::slint! {
         preferred-width: 820px;
         preferred-height: 660px;
         
-        ScrollView {
-            VerticalLayout {
-                padding: 16px;
-                spacing: 12px;
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
                 
                 // Header
                 Rectangle {
@@ -433,7 +432,6 @@ slint::slint! {
                         background: #2a2a2a;
                     }
                 }
-            }
         }
     }
 }
