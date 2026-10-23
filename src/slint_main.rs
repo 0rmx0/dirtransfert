@@ -152,11 +152,11 @@ slint::slint! {
         property <bool> hovered;
         border-radius: RmxTheme.radius;
         height: 28px;
-        min-width: 120px;
         HorizontalLayout {
             padding-left: 2px;
             spacing: 8px;
-            Rectangle {
+            box-wrapper := Rectangle {
+                width: 18px;
                 box := Rectangle {
                     y: (parent.height - self.height) / 2;
                     width: 18px;
