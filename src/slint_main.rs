@@ -113,30 +113,17 @@ slint::slint! {
         property <bool> hovered;
         property <bool> pressed;
         property <bool> down: pressed && hovered;
-        states [
-            disabled when !enabled: {
-                background: RmxTheme.surface;
-                border-color: RmxTheme.ombre;
-                label.color: RmxTheme.ombre;
-            }
-            active when root.down: {
-                background: root.primary ? #00cccc : RmxTheme.surface;
-            }
-            hover when root.hovered: {
-                background: root.primary ? #33ffff : #2a2a2a;
-            }
-            otherwise: {
-                background: root.primary ? RmxTheme.spectre : RmxTheme.surface;
-            }
-        ]
+        background: !root.enabled ? RmxTheme.surface
+            : root.primary ? (root.down ? #00cccc : (root.hovered ? #33ffff : RmxTheme.spectre))
+            : (root.down ? RmxTheme.surface : (root.hovered ? #2a2a2a : RmxTheme.surface));
         border-radius: RmxTheme.radius;
         border-width: root.primary || root.accent ? 2px : 1px;
-        height: root.primary ? 44px : 34px;
+        height: 34px;
         min-width: root.min-button-width;
         border-color: root.primary ? RmxTheme.spectre : (root.accent ? RmxTheme.etrange : RmxTheme.ombre);
         label := Text {
             text: root.text;
-            color: root.primary ? RmxTheme.neant : RmxTheme.encre;
+            color: !root.enabled ? RmxTheme.ombre : (root.primary ? RmxTheme.neant : RmxTheme.encre);
             font-weight: root.font-weight;
             font-size: root.font-size;
             horizontal-alignment: center;
@@ -393,9 +380,6 @@ slint::slint! {
                             text: "Démarrer";
                             primary: true;
                             enabled: !root.running;
-                            font-weight: 800;
-                            font-size: 16px;
-                            min-button-width: 160px;
                             clicked => { root.start-transfer(); }
                         }
                         RmxButton {
