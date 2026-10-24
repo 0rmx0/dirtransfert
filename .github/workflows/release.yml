@@ -39,12 +39,6 @@ jobs:
             os_name: macos-amd64
             target: x86_64-apple-darwin
             artifact: DirTransfert-macos-amd64.tar.gz
-          - os: ubuntu-latest
-            os_name: linux-riscv64
-            target: riscv64gc-unknown-linux-gnu
-            artifact: DirTransfert-linux-riscv64.tar.gz
-            cross: true
-            no-default-features: true
 
     steps:
       - uses: actions/checkout@v4
@@ -63,19 +57,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libegl1-mesa-dev libfontconfig1-dev
 
-      - name: Install cross
-        if: matrix.cross
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cross
-
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} ${{ matrix.no-default-features && '--no-default-features' || '' }}
-        if: ${{ !matrix.cross }}
-
-      - name: Build (cross, sans GUI)
-        run: cross build --release --no-default-features --target ${{ matrix.target }}
-        if: matrix.cross
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
@@ -103,6 +86,45 @@ jobs:
           path: |
             ${{ matrix.artifact }}
             ${{ matrix.artifact }}.sha256
+
+  riscv64:
+    name: Build linux-riscv64 (GUI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: riscv64
+
+      - name: Build (GUI, conteneur Debian riscv64)
+        run: |
+          docker run --rm --platform linux/riscv64 \
+            -v "$PWD:/src" -w /src \
+            rust:1-slim-bookworm \
+            bash -euc '
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                libfontconfig1-dev libxkbcommon-dev libwayland-dev \
+                libgl1-mesa-dev libegl1-mesa-dev pkg-config
+              cargo build --release --target riscv64gc-unknown-linux-gnu
+            '
+
+      - name: Package (Unix)
+        run: |
+          mkdir -p dist
+          cp target/riscv64gc-unknown-linux-gnu/release/DirTransfert dist/
+          cp README.md LICENSE dist/
+          tar -czf DirTransfert-linux-riscv64.tar.gz -C dist .
+          shasum -a 256 DirTransfert-linux-riscv64.tar.gz > DirTransfert-linux-riscv64.tar.gz.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirTransfert-linux-riscv64.tar.gz
+          path: |
+            DirTransfert-linux-riscv64.tar.gz
+            DirTransfert-linux-riscv64.tar.gz.sha256
 
   deb:
     name: Build .deb (amd64)
@@ -142,7 +164,7 @@ jobs:
 
   release:
     name: Create release
-    needs: [build, deb]
+    needs: [build, riscv64, deb]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch'
     steps:
