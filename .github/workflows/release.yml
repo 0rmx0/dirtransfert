@@ -106,7 +106,7 @@ jobs:
             bash -euc '
               apt-get update
               apt-get install -y --no-install-recommends \
-                curl ca-certificates build-essential pkg-config \
+                curl ca-certificates build-essential pkg-config python3 \
                 libfontconfig1-dev libxkbcommon-dev libwayland-dev \
                 libgl1-mesa-dev libegl1-mesa-dev
               curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
