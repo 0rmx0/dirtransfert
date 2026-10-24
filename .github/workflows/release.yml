@@ -39,6 +39,12 @@ jobs:
             os_name: macos-amd64
             target: x86_64-apple-darwin
             artifact: DirTransfert-macos-amd64.tar.gz
+          - os: ubuntu-latest
+            os_name: linux-riscv64
+            target: riscv64gc-unknown-linux-gnu
+            artifact: DirTransfert-linux-riscv64.tar.gz
+            cross: true
+            no-default-features: true
 
     steps:
       - uses: actions/checkout@v4
@@ -57,8 +63,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libegl1-mesa-dev libfontconfig1-dev
 
+      - name: Install cross
+        if: matrix.cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} ${{ matrix.no-default-features && '--no-default-features' || '' }}
+        if: ${{ !matrix.cross }}
+
+      - name: Build (cross, sans GUI)
+        run: cross build --release --no-default-features --target ${{ matrix.target }}
+        if: matrix.cross
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
