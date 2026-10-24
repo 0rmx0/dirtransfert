@@ -87,49 +87,6 @@ jobs:
             ${{ matrix.artifact }}
             ${{ matrix.artifact }}.sha256
 
-  riscv64:
-    name: Build linux-riscv64 (GUI)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-qemu-action@v3
-        with:
-          platforms: riscv64
-
-      - name: Build (GUI, conteneur Debian riscv64)
-        run: |
-          docker run --rm --platform linux/riscv64 \
-            -v "$PWD:/src" -v dirtransfert-cargo-registry:/usr/local/cargo/registry -w /src \
-            -e CARGO_TARGET_DIR=/src/target \
-            debian:trixie \
-            bash -euc '
-              apt-get update
-              apt-get install -y --no-install-recommends \
-                curl ca-certificates build-essential pkg-config python3 \
-                libfontconfig1-dev libxkbcommon-dev libwayland-dev \
-                libgl1-mesa-dev libegl1-mesa-dev
-              curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
-              . "$HOME/.cargo/env"
-              cargo build --release --target riscv64gc-unknown-linux-gnu
-            '
-
-      - name: Package (Unix)
-        run: |
-          mkdir -p dist
-          cp target/riscv64gc-unknown-linux-gnu/release/DirTransfert dist/
-          cp README.md LICENSE dist/
-          tar -czf DirTransfert-linux-riscv64.tar.gz -C dist .
-          shasum -a 256 DirTransfert-linux-riscv64.tar.gz > DirTransfert-linux-riscv64.tar.gz.sha256
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: DirTransfert-linux-riscv64.tar.gz
-          path: |
-            DirTransfert-linux-riscv64.tar.gz
-            DirTransfert-linux-riscv64.tar.gz.sha256
-
   deb:
     name: Build .deb (amd64)
     runs-on: ubuntu-latest
@@ -168,7 +125,7 @@ jobs:
 
   release:
     name: Create release
-    needs: [build, riscv64, deb]
+    needs: [build, deb]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch'
     steps:
