@@ -100,13 +100,17 @@ jobs:
       - name: Build (GUI, conteneur Debian riscv64)
         run: |
           docker run --rm --platform linux/riscv64 \
-            -v "$PWD:/src" -w /src \
-            rust:1-slim-bookworm \
+            -v "$PWD:/src" -v dirtransfert-cargo-registry:/usr/local/cargo/registry -w /src \
+            -e CARGO_TARGET_DIR=/src/target \
+            debian:trixie \
             bash -euc '
               apt-get update
               apt-get install -y --no-install-recommends \
+                curl ca-certificates build-essential pkg-config \
                 libfontconfig1-dev libxkbcommon-dev libwayland-dev \
-                libgl1-mesa-dev libegl1-mesa-dev pkg-config
+                libgl1-mesa-dev libegl1-mesa-dev
+              curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+              . "$HOME/.cargo/env"
               cargo build --release --target riscv64gc-unknown-linux-gnu
             '
 
