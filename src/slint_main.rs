@@ -43,6 +43,7 @@ slint::slint! {
                 width: parent.width;
                 text: root.text;
                 color: root.highlight ? RmxTheme.spectre : RmxTheme.brume;
+                font-family: "Help Me";
                 font-size: 14px;
                 vertical-alignment: center;
                 horizontal-alignment: root.h-alignment;
@@ -63,7 +64,7 @@ slint::slint! {
                 width: parent.width;
                 text: root.text;
                 color: RmxTheme.terminal;
-                font-family: "monospace";
+                font-family: "help Me";
                 font-size: 14px;
                 vertical-alignment: center;
                 horizontal-alignment: center;
@@ -87,7 +88,7 @@ slint::slint! {
                 width: parent.width;
                 text <=> root.text;
                 color: RmxTheme.encre;
-                font-family: "monospace";
+                font-family: "Help Me";
                 font-size: 14px;
                 horizontal-alignment: root.h-alignment;
                 vertical-alignment: center;
@@ -99,7 +100,7 @@ slint::slint! {
             width: parent.width - 20px;
             text: root.placeholder;
             color: RmxTheme.ombre;
-            font-family: "monospace";
+            font-family: "Help Me";
             font-size: 14px;
             horizontal-alignment: root.h-alignment;
             vertical-alignment: center;
@@ -129,6 +130,7 @@ slint::slint! {
         label := Text {
             text: root.text;
             color: !root.enabled ? RmxTheme.ombre : (root.primary ? RmxTheme.neant : RmxTheme.encre);
+            font-family: "Help Me";
             font-weight: root.font-weight;
             font-size: root.font-size;
             horizontal-alignment: center;
@@ -187,6 +189,7 @@ slint::slint! {
             Text {
                 text: root.text;
                 color: RmxTheme.brume;
+                font-family: "Help Me";
                 font-size: 14px;
                 vertical-alignment: center;
                 overflow: elide;
@@ -240,6 +243,32 @@ slint::slint! {
         preferred-width: 820px;
         preferred-height: 660px;
 
+        // Fond grain - étiré pour couvrir toute la fenêtre
+        Rectangle {
+            width: root.width;
+            height: root.height;
+            Image {
+                width: parent.width;
+                height: parent.height;
+                source: @image-url("ui/grain.png");
+                opacity: 0.3;
+            }
+        }
+
+        // Logo mask - taille fixe 500x500, centré, proportions conservées
+        Rectangle {
+            x: (root.width - 500px) / 2;
+            y: (root.height - 500px) / 2;
+            width: 500px;
+            height: 500px;
+            Image {
+                source: @image-url("ui/mask.png");
+                width: parent.width;
+                height: parent.height;
+                opacity: 0.035;
+            }
+        }
+
         VerticalLayout {
             padding: 16px;
             spacing: 12px;
@@ -252,7 +281,8 @@ slint::slint! {
                         height: 30px;
                         text: "DirTransfert";
                         color: RmxTheme.encre;
-                        font-size: 22px;
+                        font-family: "Help Me";
+                        font-size: 24px;
                         font-weight: 700;
                         horizontal-alignment: center;
                         vertical-alignment: top;
@@ -419,7 +449,7 @@ slint::slint! {
                             wrap: word-wrap;
                             text: root.log-text;
                             color: RmxTheme.terminal;
-                            font-family: "monospace";
+                            font-family: "Help Me";
                             font-size: 12px;
                         }
                     }
@@ -431,7 +461,7 @@ slint::slint! {
                     Text {
                         text: root.hidden;
                         color: #2a2a2a;
-                        font-family: "monospace";
+                        font-family: "Help Me";
                         font-size: 9px;
                         horizontal-alignment: center;
                     }
