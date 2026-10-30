@@ -265,8 +265,8 @@ slint::slint! {
                         x: parent.width / 2 + 92px;
                         y: 0px;
                         height: 30px;
-                        visible: true;
-                        animate visible { duration: 1s; iteration-count: -1; direction: reverse; }
+                        opacity: 1;
+                        animate opacity { duration: 1s; iteration-count: -1; direction: alternate; }
                     }
                 }
 
