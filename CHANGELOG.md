@@ -2,6 +2,11 @@
 
 Les versions notables de DirTransfert. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 
+## [Non publié]
+
+### Modifié
+- **GUI : charte Terminal R_M_X v2** : fond noir-vert `#0A0F0A`, unique teinte vert CRT `#33FF66`, plus de néons cyan/magenta ni de surfaces grises ; police HelpMe enregistrée embarquée (`include_bytes!`, famille `HelpMe`) et plein écran ; curseur bloc `█` clignotant dans l'en-tête ; boutons et champs en filaire vert (bouton primaire plein vert, texte noir-vert), plus de coins arrondis ; images de fond `grain.png`/`mask.png` retirées de l'interface (conservées dans `src/ui/`) ; couche cachée base64 renouvelée, toujours affichée telle quelle en pied de fenêtre.
+- Logique fonctionnelle inchangée : modes Envoyer/Recevoir, code de jumelage, sélection de répertoires, adresse, options UPnP/pare-feu/IPv6, pipeline et journal identiques.
 
 ## [0.5.0] - 2026-10-23
 
