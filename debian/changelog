@@ -1,3 +1,17 @@
+dirtransfert (0.7.0-1) unstable; urgency=medium
+
+  * Protocole DTX2 : handshake anti-rejeu (sel + challenge, HKDF, HMAC),
+    reprise au niveau morceau (hash par bloc de 1 Mo), code de jumelage 10 caracteres.
+  * Securite : bornes de decodage corrigees, rel_to_os durci (lecteurs Windows, UNC),
+    liens symboliques non suivis, lectures HTTP/SSDP bornees, rate-limit handshake.
+  * Nouvelles options CLI : --json, --discover, --dry-run, --exclude, --limit,
+    --compress (feature), multi-destinataires, verify ; config et historique local.
+  * GUI : barre de progression, QR code, approbation du manifeste, boutons
+    Copier/Découvrir, journal plafonné.
+  * CI : cargo audit, --locked, signature minisign optionnelle.
+
+ -- 0rmx0 <0rmx0@users.noreply.github.com>  Wed, 04 Nov 2026 11:30:00 +0000
+
 dirtransfert (0.5.0-1) unstable; urgency=medium
 
   * New Slint UI with R_M_X design charter, replaces egui/eframe GUI.

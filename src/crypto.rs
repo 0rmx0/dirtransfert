@@ -2,17 +2,22 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit, Payload},
     ChaCha20Poly1305, Key, Nonce,
 };
+use hkdf::Hkdf;
+use hmac::{Hmac, Mac};
 use rand::RngCore;
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
-pub const CODE_LEN: usize = 8;
+pub const CODE_LEN: usize = 10;
 const ARGON2_M_KIB: u32 = 65536;
 const ARGON2_T: u32 = 2;
 const ARGON2_P: u32 = 1;
 const MAX_FRAME: usize = 512 * 1024 * 1024;
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
+
+type HmacSha256 = Hmac<Sha256>;
 
 pub fn gen_code() -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -23,7 +28,7 @@ pub fn gen_code() -> String {
         .map(|b| ALPHABET[(*b as usize) % ALPHABET.len()])
         .collect();
     let s = String::from_utf8(s).unwrap();
-    format!("{}-{}", &s[..4], &s[4..])
+    format!("{}-{}", &s[..5], &s[5..])
 }
 
 pub fn norm_code(input: &str) -> Option<String> {
@@ -41,39 +46,73 @@ pub fn norm_code(input: &str) -> Option<String> {
     {
         return None;
     }
-    Some(format!("{}-{}", &cleaned[..4], &cleaned[4..]))
+    Some(format!("{}-{}", &cleaned[..5], &cleaned[5..]))
 }
 
-fn derive_key(code: &str) -> [u8; 32] {
-    let salt = format!("dtx2:{}", code);
+fn derive_master(code: &str, salt: &[u8]) -> [u8; 32] {
     let params =
         argon2::Params::new(ARGON2_M_KIB, ARGON2_T, ARGON2_P, Some(32)).expect("parametres argon2");
     let a2 = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
     let mut out = [0u8; 32];
-    a2.hash_password_into(code.as_bytes(), salt.as_bytes(), &mut out)
+    a2.hash_password_into(code.as_bytes(), salt, &mut out)
         .expect("argon2");
     out
 }
 
-fn auth_token(key: &[u8; 32]) -> [u8; 32] {
-    let mut h = Sha256::new();
-    h.update(b"dtx2-auth");
-    h.update(key);
-    h.finalize().into()
+fn hmac_tag(master: &[u8; 32], msg: &[u8]) -> [u8; 32] {
+    let mut mac = <HmacSha256 as Mac>::new_from_slice(master).expect("cle hmac");
+    mac.update(msg);
+    mac.finalize().into_bytes().into()
 }
 
-fn client_proof(hello: &[u8; 32], token: &[u8; 32]) -> [u8; 32] {
-    let mut h = Sha256::new();
-    h.update(b"dtx2-proof");
-    h.update(hello);
-    h.update(token);
-    h.finalize().into()
+/// Cle de session fraiche par connexion : depend du code ET des deux nonces
+/// echanges pendant la poignee de main, donc jamais rejouable.
+fn session_key(master: &[u8; 32], hello_c: &[u8; 32], hello_s: &[u8; 32]) -> [u8; 32] {
+    let mut salt = Vec::with_capacity(64);
+    salt.extend_from_slice(hello_c);
+    salt.extend_from_slice(hello_s);
+    let hk = Hkdf::<Sha256>::new(Some(&salt), master);
+    let mut out = [0u8; 32];
+    hk.expand(b"dtx2-session", &mut out).expect("hkdf");
+    out
+}
+
+fn auth_token(master: &[u8; 32], hello_c: &[u8; 32], hello_s: &[u8; 32]) -> [u8; 32] {
+    let mut m = Vec::with_capacity(69);
+    m.extend_from_slice(b"dtx2-auth");
+    m.extend_from_slice(hello_c);
+    m.extend_from_slice(hello_s);
+    hmac_tag(master, &m)
+}
+
+fn client_proof(
+    master: &[u8; 32],
+    hello_c: &[u8; 32],
+    hello_s: &[u8; 32],
+    token: &[u8; 32],
+) -> [u8; 32] {
+    let mut m = Vec::with_capacity(101);
+    m.extend_from_slice(b"dtx2-proof");
+    m.extend_from_slice(hello_c);
+    m.extend_from_slice(hello_s);
+    m.extend_from_slice(token);
+    hmac_tag(master, &m)
+}
+
+/// Tag de découverte LAN : prouve la connaissance du code sans le reveler.
+/// Protege par Argon2id, donc pas de dictionnaire offline rapide.
+pub fn discovery_tag(code: &str) -> [u8; 16] {
+    let master = derive_master(code, b"dtx2-discovery-salt-v1");
+    let tag = hmac_tag(&master, b"dtx2-discover");
+    let mut out = [0u8; 16];
+    out.copy_from_slice(&tag[..16]);
+    out
 }
 
 const DIR_CLIENT_TO_SERVER: u8 = 0;
 const DIR_SERVER_TO_CLIENT: u8 = 1;
 
-fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
@@ -111,13 +150,32 @@ pub struct SecureStream {
 }
 
 impl SecureStream {
+    /// Poignee de main authentifiee mutuelle avec sel et challenge aleatoires :
+    /// un rejeu d'une poignee de main capturee est rejete (la cle de session
+    /// depend du challenge du serveur, frais a chaque connexion).
     pub fn server_handshake(mut inner: TcpStream, code: &str) -> Result<Self, String> {
-        let key = derive_key(code);
-        let token = auth_token(&key);
-        let mut hello = [0u8; 32];
         inner
-            .read_exact(&mut hello)
-            .map_err(|e| format!("lecture de la poignee de main : {}", e))?;
+            .set_read_timeout(Some(HANDSHAKE_TIMEOUT))
+            .map_err(|e| format!("timeout lecture : {}", e))?;
+        inner
+            .set_write_timeout(Some(HANDSHAKE_TIMEOUT))
+            .map_err(|e| format!("timeout ecriture : {}", e))?;
+        let mut hello_c = [0u8; 32];
+        inner
+            .read_exact(&mut hello_c)
+            .map_err(|e| format!("lecture du hello client : {}", e))?;
+        let mut salt = [0u8; 16];
+        rand::rng().fill_bytes(&mut salt);
+        let mut hello_s = [0u8; 32];
+        rand::rng().fill_bytes(&mut hello_s);
+        let mut hello = Vec::with_capacity(48);
+        hello.extend_from_slice(&salt);
+        hello.extend_from_slice(&hello_s);
+        inner
+            .write_all(&hello)
+            .map_err(|e| format!("envoi du sel/challenge : {}", e))?;
+        let master = derive_master(code, &salt);
+        let token = auth_token(&master, &hello_c, &hello_s);
         inner
             .write_all(&token)
             .map_err(|e| format!("envoi du jeton : {}", e))?;
@@ -125,10 +183,11 @@ impl SecureStream {
         inner
             .read_exact(&mut proof)
             .map_err(|e| format!("lecture de la preuve du client : {}", e))?;
-        let expected = client_proof(&hello, &token);
+        let expected = client_proof(&master, &hello_c, &hello_s, &token);
         if !ct_eq(&proof, &expected) {
             return Err("code de jumelage incorrect cote client".into());
         }
+        let key = session_key(&master, &hello_c, &hello_s);
         Ok(Self::finish(
             inner,
             key,
@@ -138,24 +197,37 @@ impl SecureStream {
     }
 
     pub fn client_handshake(mut inner: TcpStream, code: &str) -> Result<Self, String> {
-        let key = derive_key(code);
-        let token = auth_token(&key);
-        let mut hello = [0u8; 32];
-        rand::rng().fill_bytes(&mut hello);
         inner
-            .write_all(&hello)
+            .set_read_timeout(Some(HANDSHAKE_TIMEOUT))
+            .map_err(|e| format!("timeout lecture : {}", e))?;
+        inner
+            .set_write_timeout(Some(HANDSHAKE_TIMEOUT))
+            .map_err(|e| format!("timeout ecriture : {}", e))?;
+        let mut hello_c = [0u8; 32];
+        rand::rng().fill_bytes(&mut hello_c);
+        inner
+            .write_all(&hello_c)
             .map_err(|e| format!("envoi du hello : {}", e))?;
+        let mut hello = [0u8; 48];
+        inner
+            .read_exact(&mut hello)
+            .map_err(|e| format!("lecture du sel/challenge : {}", e))?;
+        let salt = &hello[..16];
+        let hello_s: [u8; 32] = hello[16..].try_into().unwrap();
+        let master = derive_master(code, salt);
         let mut recv_token = [0u8; 32];
         inner
             .read_exact(&mut recv_token)
             .map_err(|e| format!("lecture du jeton : {}", e))?;
-        if !ct_eq(&recv_token, &token) {
+        if !ct_eq(&recv_token, &auth_token(&master, &hello_c, &hello_s)) {
             return Err("code de jumelage incorrect (poignee de main refusee)".into());
         }
-        let proof = client_proof(&hello, &token);
+        let token = recv_token;
+        let proof = client_proof(&master, &hello_c, &hello_s, &token);
         inner
             .write_all(&proof)
             .map_err(|e| format!("envoi de la preuve : {}", e))?;
+        let key = session_key(&master, &hello_c, &hello_s);
         Ok(Self::finish(
             inner,
             key,
@@ -273,13 +345,16 @@ impl Read for SecureStream {
 mod tests {
     use super::*;
 
+    const TEST_CODE: &str = "AB2CD-34567";
+
     #[test]
     fn normalisation_code() {
-        assert_eq!(norm_code("abcd-2345").unwrap(), "ABCD-2345");
-        assert_eq!(norm_code(" abcd2345 ").unwrap(), "ABCD-2345");
-        assert!(norm_code("abc-234").is_none());
-        assert!(norm_code("ABCDEFGHI").is_none());
-        assert!(norm_code("ABCD234O").is_none());
+        assert_eq!(norm_code("ab2cd-34567").unwrap(), "AB2CD-34567");
+        assert_eq!(norm_code(" ab2cd34567 ").unwrap(), "AB2CD-34567");
+        assert!(norm_code("ab2cd-3456").is_none());
+        assert!(norm_code("ab2cd-345678").is_none());
+        assert!(norm_code("AB2CD-3456O").is_none());
+        assert!(norm_code("AB2CD-34560").is_none());
     }
 
     #[test]
@@ -289,9 +364,19 @@ mod tests {
     }
 
     #[test]
-    fn derive_key_deterministe_et_distincte() {
-        assert_eq!(derive_key("ABCD-2345"), derive_key("ABCD-2345"));
-        assert_ne!(derive_key("ABCD-2345"), derive_key("ABCD-2346"));
+    fn derive_master_deterministe_et_distinct() {
+        assert_eq!(
+            derive_master(TEST_CODE, b"sel-fixe"),
+            derive_master(TEST_CODE, b"sel-fixe")
+        );
+        assert_ne!(
+            derive_master(TEST_CODE, b"sel-fixe"),
+            derive_master(TEST_CODE, b"autre-sel")
+        );
+        assert_ne!(
+            derive_master(TEST_CODE, b"sel-fixe"),
+            derive_master("AB2CD-34568", b"sel-fixe")
+        );
     }
 
     #[test]
@@ -320,11 +405,60 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let server = std::thread::spawn(move || {
             let (s, _) = listener.accept().unwrap();
-            SecureStream::server_handshake(s, "ABCD-2345")
+            SecureStream::server_handshake(s, TEST_CODE)
         });
         let c = TcpStream::connect(("127.0.0.1", port)).unwrap();
         assert!(SecureStream::client_handshake(c, "WRONG-CODE").is_err());
         assert!(server.join().unwrap().is_err());
+    }
+
+    #[test]
+    fn handshake_rejeu_rejete() {
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let mut results = Vec::new();
+            for _ in 0..2 {
+                let (s, _) = listener.accept().unwrap();
+                results.push(SecureStream::server_handshake(s, TEST_CODE).is_ok());
+            }
+            results
+        });
+        // Client legit : poignee de main manuelle en enregistrant les octets emis.
+        let c = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let mut c = c;
+        let mut hello_c = [0u8; 32];
+        rand::rng().fill_bytes(&mut hello_c);
+        c.write_all(&hello_c).unwrap();
+        let mut hello = [0u8; 48];
+        c.read_exact(&mut hello).unwrap();
+        let salt = &hello[..16];
+        let hello_s: [u8; 32] = hello[16..].try_into().unwrap();
+        let master = derive_master(TEST_CODE, salt);
+        let mut token = [0u8; 32];
+        c.read_exact(&mut token).unwrap();
+        assert!(ct_eq(&token, &auth_token(&master, &hello_c, &hello_s)));
+        let proof = client_proof(&master, &hello_c, &hello_s, &token);
+        c.write_all(&proof).unwrap();
+        drop(c);
+        // Attaquant : rejoue le hello et la preuve captures sur une nouvelle connexion.
+        let a = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let mut a = a;
+        a.write_all(&hello_c).unwrap();
+        let mut hello2 = [0u8; 48];
+        a.read_exact(&mut hello2).unwrap();
+        assert_ne!(
+            &hello2[16..],
+            &hello_s,
+            "le challenge serveur doit etre frais"
+        );
+        let mut token2 = [0u8; 32];
+        a.read_exact(&mut token2).unwrap();
+        a.write_all(&proof).unwrap();
+        drop(a);
+        let results = server.join().unwrap();
+        assert_eq!(results, vec![true, false]);
     }
 
     #[test]
@@ -334,16 +468,31 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let server = std::thread::spawn(move || {
             let (s, _) = listener.accept().unwrap();
-            let mut ss = SecureStream::server_handshake(s, "ABCD-2345").unwrap();
+            let mut ss = SecureStream::server_handshake(s, TEST_CODE).unwrap();
             let mut got = Vec::new();
             ss.read_to_end(&mut got).unwrap();
             got
         });
         let c = TcpStream::connect(("127.0.0.1", port)).unwrap();
-        let mut cs = SecureStream::client_handshake(c, "ABCD-2345").unwrap();
+        let mut cs = SecureStream::client_handshake(c, TEST_CODE).unwrap();
         cs.write_all(b"bonjour dirtransfert").unwrap();
         cs.flush().unwrap();
         drop(cs);
         assert_eq!(server.join().unwrap(), b"bonjour dirtransfert");
+    }
+
+    #[test]
+    fn sessions_distinctes_cles_distinctes() {
+        let master = derive_master(TEST_CODE, b"sel-de-test-16oct");
+        let h1 = [1u8; 32];
+        let h2 = [2u8; 32];
+        assert_ne!(
+            session_key(&master, &h1, &h2),
+            session_key(&master, &h2, &h1)
+        );
+        assert_ne!(
+            session_key(&master, &h1, &h2),
+            session_key(&master, &h1, &h1)
+        );
     }
 }

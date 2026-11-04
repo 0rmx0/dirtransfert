@@ -35,7 +35,8 @@ fn http_raw(host: &str, port: u16, request: &str) -> Result<String, String> {
     s.write_all(request.as_bytes())
         .map_err(|e| format!("envoi HTTP : {}", e))?;
     let mut out = String::new();
-    s.read_to_string(&mut out)
+    s.take(1024 * 1024)
+        .read_to_string(&mut out)
         .map_err(|e| format!("lecture reponse HTTP : {}", e))?;
     let status_ok = out
         .lines()
@@ -139,7 +140,13 @@ fn ssdp_discover(timeout: Duration) -> Vec<String> {
     let mut buf = [0u8; 4096];
     while std::time::Instant::now() < deadline {
         match sock.recv_from(&mut buf) {
-            Ok((n, _)) => {
+            Ok((n, from)) => {
+                // N'accepte les reponses SSDP que des hotes du reseau local.
+                if let std::net::IpAddr::V4(v4) = from.ip() {
+                    if !crate::net::is_private_v4(v4) && !v4.is_loopback() {
+                        continue;
+                    }
+                }
                 let resp = String::from_utf8_lossy(&buf[..n]).to_string();
                 for line in resp.lines() {
                     let lower = line.to_ascii_lowercase();

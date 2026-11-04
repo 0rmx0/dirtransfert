@@ -2,6 +2,31 @@
 
 Les versions notables de DirTransfert. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 
+## [0.7.0] - 2026-11-04
+
+> **Incompatibilité protocole** : `DTX2` (manifeste avec hash par morceau, requêtes avec reprise, handshake à sel/challenge) et code de jumelage à 10 caractères. Mettez à jour **les deux côtés**.
+
+### Sécurité
+- **Handshake anti-rejeu** : sel et challenge aléatoires par session, clé de session HKDF(master, hello_client‖challenge_serveur), preuve HMAC mutuelle — un rejeu de poignée de main capturée est rejeté (test de régression). Le code n'a plus de vérifieur statique exposé.
+- Timeout de 15 s pendant la handshake ; limite de 5 tentatives de handshake/min/IP côté récepteur (le récepteur ré-attend une connexion après un mauvais code au lieu d'échouer).
+- `FileEntry::decode` : bornes corrigées (plus de panic sur trame tronquée) ; `rel_to_os` renforcé (rejet des lecteurs `C:`, chemins UNC, noms de périphériques Windows réservés) ; les liens symboliques ne sont plus suivis à l'émission.
+- Lectures HTTP/SSDP bornées ; SSDP n'accepte que les réponses d'hôtes privés.
+- Code de jumelage passé à 10 caractères (~50 bits).
+
+### Ajouté
+- **Reprise au niveau bloc** : hash par morceau de 1 Mo dans le manifeste ; un `.dtxpart` valide en préfixe est repris là où il en était.
+- **Approbation du manifeste** côté récepteur (GUI : Accepter/Refuser ; CLI : confirmation interactive, `--yes` pour automatiser ; `REFUSED` côté protocole).
+- **Découverte LAN** par sonde UDP signée (HMAC/Argon2, port 47501) : `--discover` / bouton « Découvrir ».
+- **QR code** `dtx://IP:port?code=...` (GUI + ASCII en CLI) et bouton « Copier la commande ».
+- CLI : `--json`, `--exclude`, `--dry-run`, `--limit`, `--compress` (feature `compress`, zstd), multi-destinataires, sous-commande `verify`.
+- Fichier de config `~/.config/dirtransfert/config` (pipeline, exclude, limit, auto-yes) et historique `~/.local/share/dirtransfert/history.log`.
+- GUI : vraie barre de progression (événements throttlés à 100 ms), journal plafonné à 400 lignes (plus de croissance O(n²)), champs Exclure/Limite, UI extraite dans `src/ui.rs`, `invoke_from_event_loop` au lieu du timer+canal.
+- CI : `cargo audit`, clippy/tests avec `--all-features`, builds release en `--locked`, signature minisign (rsign2) optionnelle des artifacts si `MINISIGN_SECRET_KEY` est configuré.
+
+### Corrigé
+- Plus de panic sur `send /` (nom de racine) ; le fichier temporaire garde le nom complet (`f.bin.dtxpart`, plus de collision `a.txt`/`a.bin`).
+- Flag `--log`/`--verbose` mort supprimé ; test IPv6 auto-sauté si pas de loopback v6.
+
 
 ## [0.5.0] - 2026-10-23
 
