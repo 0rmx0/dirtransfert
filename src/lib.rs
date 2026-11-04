@@ -1,5 +1,7 @@
 pub mod cli;
+pub mod config;
 pub mod crypto;
+pub mod discover;
 pub mod firewall;
 pub mod net;
 pub mod protocol;

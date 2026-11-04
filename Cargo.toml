@@ -23,12 +23,21 @@ slint = { version = "1.18", default-features = false, features = ["std", "render
 # Chiffrement du flux (option 2 : code de jumelage + AEAD)
 argon2 = "0.5"
 chacha20poly1305 = "0.10"
+hkdf = "0.12"
+hmac = "0.12"
 rand = "0.9"
 sha2 = "0.10"
+
+# QR code (rendu ASCII / RGBA maison, sans la feature image)
+qrcode = { version = "0.14", default-features = false }
+
+# Compression optionnelle des morceaux (avant chiffrement)
+zstd = { version = "0.13", optional = true }
 
 [features]
 default = ["slint-ui"]
 slint-ui = ["slint", "rfd"]
+compress = ["zstd"]
 
 [build-dependencies]
 winresource = "0.1"

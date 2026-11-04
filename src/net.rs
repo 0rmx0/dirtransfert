@@ -50,7 +50,8 @@ fn http_get_body(url: &str) -> Result<String, String> {
     s.write_all(req.as_bytes())
         .map_err(|e| format!("envoi HTTP : {}", e))?;
     let mut out = String::new();
-    s.read_to_string(&mut out)
+    s.take(4096)
+        .read_to_string(&mut out)
         .map_err(|e| format!("lecture reponse HTTP : {}", e))?;
     let body = match out.find("\r\n\r\n") {
         Some(i) => out[i + 4..].to_string(),
