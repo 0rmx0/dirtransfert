@@ -8,4 +8,6 @@ pub mod protocol;
 #[cfg(feature = "slint-ui")]
 pub mod slint_main;
 pub mod transfer;
+#[cfg(feature = "slint-ui")]
+pub mod ui;
 pub mod upnp;
