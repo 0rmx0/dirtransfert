@@ -1,19 +1,15 @@
 slint::slint! {
     import { Button, CheckBox, LineEdit, ScrollView, Slider, ProgressIndicator } from "std-widgets.slint";
 
-    // ---- Charte graphique R_M_X ----
-    // NEANT #111111, SURFACE #222222, ENCRE #FFFFFF, BRUME #CCCCCC
-    // SPECTRE #00FFFF, ETRANGE #FF00FF, TERMINAL #00FF7F, OMBRE #555555
+    // ---- Charte Terminal R_M_X v2 ----
+    // Fond noir-vert #0A0F0A, unique teinte vert CRT #33FF66, halo CRT,
+    // police HelpMe plein ecran, curseur bloc clignotant. Un seul ecran, pas de chrome.
     global RmxTheme {
-        out property <color> neant: #111111;
-        out property <color> surface: #222222;
-        out property <color> encre: #FFFFFF;
-        out property <color> brume: #CCCCCC;
-        out property <color> spectre: #00FFFF;
-        out property <color> etrange: #FF00FF;
-        out property <color> terminal: #00FF7F;
-        out property <color> ombre: #555555;
-        out property <length> radius: 10px;
+        out property <color> fond: #0A0F0A;
+        out property <color> crt: #33FF66;
+        out property <color> crt-faible: #1a8033;
+        out property <color> crt-voile: #12240f;
+        out property <length> halo: 6px;
     }
 
     component RmxLabel inherits Rectangle {
@@ -28,8 +24,8 @@ slint::slint! {
             Text {
                 width: parent.width;
                 text: root.text;
-                color: root.highlight ? RmxTheme.spectre : RmxTheme.brume;
-                font-family: "Help Me";
+                color: RmxTheme.crt;
+                font-family: "HelpMe";
                 font-size: 14px;
                 vertical-alignment: center;
                 horizontal-alignment: root.h-alignment;
@@ -40,8 +36,7 @@ slint::slint! {
 
     component RmxValue inherits Rectangle {
         in property <string> text;
-        background: RmxTheme.surface;
-        border-radius: RmxTheme.radius;
+        background: RmxTheme.crt-voile;
         height: 32px;
         min-width: 120px;
         Rectangle {
@@ -49,8 +44,8 @@ slint::slint! {
             Text {
                 width: parent.width;
                 text: root.text;
-                color: RmxTheme.terminal;
-                font-family: "Help Me";
+                color: RmxTheme.crt;
+                font-family: "HelpMe";
                 font-size: 14px;
                 vertical-alignment: center;
                 horizontal-alignment: center;
@@ -64,8 +59,7 @@ slint::slint! {
         in property <string> placeholder;
         in property <TextHorizontalAlignment> h-alignment: left;
         callback edited(string);
-        background: RmxTheme.surface;
-        border-radius: RmxTheme.radius;
+        background: RmxTheme.crt-voile;
         height: 32px;
         min-width: 120px;
         forward-focus: input;
@@ -73,8 +67,8 @@ slint::slint! {
             input := TextInput {
                 width: parent.width;
                 text <=> root.text;
-                color: RmxTheme.encre;
-                font-family: "Help Me";
+                color: RmxTheme.crt;
+                font-family: "HelpMe";
                 font-size: 14px;
                 horizontal-alignment: root.h-alignment;
                 vertical-alignment: center;
@@ -85,8 +79,8 @@ slint::slint! {
             x: 10px;
             width: parent.width - 20px;
             text: root.placeholder;
-            color: RmxTheme.ombre;
-            font-family: "Help Me";
+            color: RmxTheme.crt-faible;
+            font-family: "HelpMe";
             font-size: 14px;
             horizontal-alignment: root.h-alignment;
             vertical-alignment: center;
@@ -105,18 +99,17 @@ slint::slint! {
         property <bool> hovered;
         property <bool> pressed;
         property <bool> down: pressed && hovered;
-        background: !root.enabled ? RmxTheme.surface
-            : root.primary ? (root.down ? #00cccc : (root.hovered ? #33ffff : RmxTheme.spectre))
-            : (root.down ? RmxTheme.surface : (root.hovered ? #2a2a2a : RmxTheme.surface));
-        border-radius: RmxTheme.radius;
-        border-width: root.primary || root.accent ? 2px : 1px;
+        background: !root.enabled ? RmxTheme.crt-voile
+            : root.primary ? RmxTheme.crt
+            : (root.hovered ? RmxTheme.crt-voile : transparent);
+        border-width: 1px;
         height: 34px;
         min-width: root.min-button-width;
-        border-color: root.primary ? RmxTheme.spectre : (root.accent ? RmxTheme.etrange : RmxTheme.ombre);
+        border-color: root.enabled ? RmxTheme.crt : RmxTheme.crt-faible;
         label := Text {
             text: root.text;
-            color: !root.enabled ? RmxTheme.ombre : (root.primary ? RmxTheme.neant : RmxTheme.encre);
-            font-family: "Help Me";
+            color: !root.enabled ? RmxTheme.crt-faible : (root.primary ? RmxTheme.fond : RmxTheme.crt);
+            font-family: "HelpMe";
             font-weight: root.font-weight;
             font-size: root.font-size;
             horizontal-alignment: center;
@@ -138,7 +131,6 @@ slint::slint! {
         in-out property <bool> checked;
         callback toggled();
         property <bool> hovered;
-        border-radius: RmxTheme.radius;
         height: 28px;
         HorizontalLayout {
             padding-left: 2px;
@@ -149,13 +141,12 @@ slint::slint! {
                     y: (parent.height - self.height) / 2;
                     width: 18px;
                     height: 18px;
-                    border-radius: 5px;
                     border-width: 1px;
-                    border-color: root.checked ? RmxTheme.spectre : RmxTheme.ombre;
-                    background: root.checked ? RmxTheme.spectre : RmxTheme.neant;
+                    border-color: root.checked ? RmxTheme.crt : RmxTheme.crt-faible;
+                    background: root.checked ? RmxTheme.crt : transparent;
                     if root.checked: Text {
-                        text: "×";
-                        color: RmxTheme.neant;
+                        text: "X";
+                        color: RmxTheme.fond;
                         font-size: 14px;
                         horizontal-alignment: center;
                         vertical-alignment: center;
@@ -174,8 +165,8 @@ slint::slint! {
             }
             Text {
                 text: root.text;
-                color: RmxTheme.brume;
-                font-family: "Help Me";
+                color: RmxTheme.crt;
+                font-family: "HelpMe";
                 font-size: 14px;
                 vertical-alignment: center;
                 overflow: elide;
@@ -196,7 +187,7 @@ slint::slint! {
     }
 
     export component AppWindow inherits Window {
-        background: RmxTheme.neant;
+        background: RmxTheme.fond;
 
         in-out property <string> mode: "receive";
         in-out property <bool> mode-send: false;
@@ -222,7 +213,7 @@ slint::slint! {
         in-out property <string> limit-text: "";
         in-out property <image> qr-image;
         in-out property <bool> qr-visible: false;
-        in-out property <string> hidden: "Um1YIHdvcmsgaW4gc2hhZG93cywgYXVkaW8gaW4gdGhlIHdpcmVzLgo=";
+        in-out property <string> hidden: "TGUgdmVydCBkYW5zIGxlIG5vaXIsIGxlIHNvbiBkYW5zIGxlcyBmaWxzLg==";
 
         callback mode-set(string);
         callback browse-dir();
@@ -242,32 +233,6 @@ slint::slint! {
         preferred-width: 820px;
         preferred-height: 700px;
 
-        // Fond grain - étiré pour couvrir toute la fenêtre
-        Rectangle {
-            width: root.width;
-            height: root.height;
-            Image {
-                width: parent.width;
-                height: parent.height;
-                source: @image-url("ui/grain.png");
-                opacity: 0.3;
-            }
-        }
-
-        // Logo mask - taille fixe 500x500, centré, proportions conservées
-        Rectangle {
-            x: (root.width - 500px) / 2;
-            y: (root.height - 500px) / 2;
-            width: 500px;
-            height: 500px;
-            Image {
-                source: @image-url("ui/mask.png");
-                width: parent.width;
-                height: parent.height;
-                opacity: 0.035;
-            }
-        }
-
         VerticalLayout {
             padding: 16px;
             spacing: 10px;
@@ -279,8 +244,8 @@ slint::slint! {
                         y: 0px;
                         height: 30px;
                         text: "DirTransfert";
-                        color: RmxTheme.encre;
-                        font-family: "Help Me";
+                        color: RmxTheme.crt;
+                        font-family: "HelpMe";
                         font-size: 24px;
                         font-weight: 700;
                         horizontal-alignment: center;
@@ -289,7 +254,18 @@ slint::slint! {
                     Rectangle {
                         y: 46px;
                         height: 1px;
-                        background: RmxTheme.ombre;
+                        background: RmxTheme.crt-faible;
+                    }
+                    cursor := Text {
+                        text: "█";
+                        color: RmxTheme.crt;
+                        font-family: "HelpMe";
+                        font-size: 24px;
+                        x: parent.width / 2 + 92px;
+                        y: 0px;
+                        height: 30px;
+                        opacity: 1;
+                        animate opacity { duration: 1s; iteration-count: -1; direction: alternate; }
                     }
                 }
 
@@ -443,8 +419,8 @@ slint::slint! {
                         }
                         Text {
                             text: root.progress-text;
-                            color: RmxTheme.terminal;
-                            font-family: "Help Me";
+                            color: RmxTheme.crt;
+                            font-family: "HelpMe";
                             font-size: 12px;
                             horizontal-alignment: center;
                             overflow: elide;
@@ -462,8 +438,7 @@ slint::slint! {
                         Rectangle {
                             width: 124px;
                             height: 124px;
-                            background: RmxTheme.surface;
-                            border-radius: RmxTheme.radius;
+                            background: RmxTheme.crt-voile;
                             Image {
                                 x: 2px;
                                 y: 2px;
@@ -477,16 +452,16 @@ slint::slint! {
                             spacing: 6px;
                             Text {
                                 text: "Commande à lancer sur l'autre PC (QR : dtx://IP:port?code=...) :";
-                                color: RmxTheme.brume;
-                                font-family: "Help Me";
+                                color: RmxTheme.crt;
+                                font-family: "HelpMe";
                                 font-size: 12px;
                                 wrap: word-wrap;
                             }
                             cmd-field := TextInput {
                                 read-only: true;
                                 text: root.cmd-text;
-                                color: RmxTheme.terminal;
-                                font-family: "Help Me";
+                                color: RmxTheme.crt;
+                                font-family: "HelpMe";
                                 font-size: 12px;
                             }
                         }
@@ -497,15 +472,14 @@ slint::slint! {
                 Rectangle {
                     height: 96px;
                     visible: root.awaiting-approval;
-                    background: RmxTheme.surface;
-                    border-radius: RmxTheme.radius;
+                    background: RmxTheme.crt-voile;
                     VerticalLayout {
                         spacing: 6px;
                         padding: 8px;
                         Text {
                             text: root.manifest-text;
-                            color: RmxTheme.encre;
-                            font-family: "Help Me";
+                            color: RmxTheme.crt;
+                            font-family: "HelpMe";
                             font-size: 12px;
                             wrap: word-wrap;
                         }
@@ -565,8 +539,7 @@ slint::slint! {
 
                 // Log area
                 Rectangle {
-                    background: RmxTheme.surface;
-                    border-radius: RmxTheme.radius;
+                    background: RmxTheme.crt-voile;
                     vertical-stretch: 1;
                     min-height: 140px;
                     log-scroll := ScrollView {
@@ -580,8 +553,8 @@ slint::slint! {
                             single-line: false;
                             wrap: word-wrap;
                             text: root.log-text;
-                            color: RmxTheme.terminal;
-                            font-family: "Help Me";
+                            color: RmxTheme.crt;
+                            font-family: "HelpMe";
                             font-size: 12px;
                         }
                     }
@@ -592,8 +565,8 @@ slint::slint! {
                     height: 18px;
                     Text {
                         text: root.hidden;
-                        color: #2a2a2a;
-                        font-family: "Help Me";
+                        color: RmxTheme.crt-voile;
+                        font-family: "HelpMe";
                         font-size: 9px;
                         horizontal-alignment: center;
                     }
@@ -601,7 +574,7 @@ slint::slint! {
                     Rectangle {
                         y: 16px;
                         height: 1px;
-                        background: #2a2a2a;
+                        background: RmxTheme.crt-voile;
                     }
                 }
         }

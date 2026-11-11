@@ -194,7 +194,16 @@ fn refresh_qr(ui: &Weak<AppWindow>) {
     }
 }
 
+fn register_helpme_font() {
+    use slint::fontique_011::fontique;
+    let data = include_bytes!("ui/fonts/HelpMe.ttf");
+    let blob = fontique::Blob::new(std::sync::Arc::new(data.to_vec()));
+    let mut collection = slint::fontique_011::shared_collection();
+    let _ = collection.register_fonts(blob, None);
+}
+
 pub fn run() -> Result<(), slint::PlatformError> {
+    register_helpme_font();
     let ui = AppWindow::new()?;
     ui.set_code(crypto::gen_code().into());
     ui.set_pipeline_text("N=8".into());
