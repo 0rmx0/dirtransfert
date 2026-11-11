@@ -80,12 +80,15 @@ jobs:
           Get-FileHash ${{ matrix.artifact }} -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path)" } > ${{ matrix.artifact }}.sha256
 
       - name: Sign artifacts (si MINISIGN_SECRET_KEY est configure)
-        if: ${{ secrets.MINISIGN_SECRET_KEY != '' }}
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "MINISIGN_SECRET_KEY non configure : signature sautee."
+            exit 0
+          fi
           cargo install rsign2 --locked
           for f in "${{ matrix.artifact }}" "${{ matrix.artifact }}.sha256"; do
             echo "$MINISIGN_SECRET_KEY" > /tmp/ms.key
