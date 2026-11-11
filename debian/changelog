@@ -1,3 +1,11 @@
+dirtransfert (0.8.0-1) unstable; urgency=medium
+
+  * GUI : charte Terminal R_M_X v2 (vert CRT #33FF66 sur noir-vert #0A0F0A,
+    police HelpMe embarquee plein ecran, curseur bloc clignotant), sans
+    toucher a la logique fonctionnelle.
+
+ -- 0rmx0 <0rmx0@users.noreply.github.com>  Wed, 11 Nov 2026 21:00:00 +0000
+
 dirtransfert (0.7.0-1) unstable; urgency=medium
 
   * Protocole DTX2 : handshake anti-rejeu (sel + challenge, HKDF, HMAC),

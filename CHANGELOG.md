@@ -2,6 +2,12 @@
 
 Les versions notables de DirTransfert. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 
+## [0.8.0] - 2026-11-11
+
+### Modifié
+- **GUI : charte Terminal R_M_X v2** : fond noir-vert `#0A0F0A`, unique teinte vert CRT `#33FF66` (+ dérivés `crt-faible`/`crt-voile` pour placeholder, désactivé, footer) : plus de néons cyan/magenta, plus de surfaces grises, plus de coins arrondis ; police HelpMe enregistrée embarquée (`include_bytes!`, famille `HelpMe`) et plein écran ; curseur bloc `█` clignotant dans l'en-tête — seul mouvement autorisé ; boutons/checkbox/champs en filaire vert (bouton primaire plein vert à texte noir-vert, bordures 1px) ; images de fond `grain.png`/`mask.png` retirées de l'interface (conservées dans `src/ui/`) ; couche cachée base64 renouvelée, toujours affichée telle quelle en pied de fenêtre.
+- Logique fonctionnelle inchangée : la charte ne touche qu'au rendu ; modes, transfert, protocole DTX2, progression, QR, approbation du manifeste et journal identiques.
+
 ## [0.7.0] - 2026-11-04
 
 > **Incompatibilité protocole** : `DTX2` (manifeste avec hash par morceau, requêtes avec reprise, handshake à sel/challenge) et code de jumelage à 10 caractères. Mettez à jour **les deux côtés**.

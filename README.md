@@ -182,7 +182,7 @@ Le code n'est jamais transmis sur le réseau : seuls circulent des nonces aléat
 - `src/crypto.rs` — handshake anti-rejeu (sel + challenge, HKDF, HMAC), `SecureStream` (Read/Write chiffrés), tag de découverte LAN.
 - `src/discover.rs` — découverte LAN par sonde UDP signée (port 47501).
 - `src/config.rs` — fichier de config `~/.config/dirtransfert/config` et historique local.
-- `src/ui.rs` + `src/slint_main.rs` — interface graphique Slint (charte R_M_X) : UI déclarative séparée de la logique, barre de progression, QR code, approbation du manifeste, boutons Copier/Découvrir.
+- `src/ui.rs` + `src/slint_main.rs` — interface graphique Slint (charte Terminal R_M_X v2 : vert CRT `#33FF66` sur noir-vert `#0A0F0A`, police HelpMe) : UI déclarative séparée de la logique, barre de progression, QR code, approbation du manifeste, boutons Copier/Découvrir.
 - `src/cli.rs` — interface en ligne de commande (`--json`, `--discover`, `--dry-run`, `--exclude`, `--limit`, `--verify`, ...).
 
 ## Tests
