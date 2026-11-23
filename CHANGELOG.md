@@ -2,6 +2,11 @@
 
 Les versions notables de DirTransfert. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/).
 
+## [Non publié]
+
+### Modifié
+- **GUI : adoption de la charte graphique R_M_X (skill appliquer-charte-rmx)** dans `src/ui.rs`, maquette FigCraft `assets/ui-charte-rmx.figcraft` (capture `assets/ui-charte-rmx.png`, rendu Slint vérifié `assets/ui-charte-rmx-slint.png`). Dark-first 80/15/5 : fond `#111111`, surfaces `#222222`, texte `#FFFFFF`/`#CCCCCC` ; accents néon limités à ~5 % — cyan `#00FFFF` (bouton primaire, pill actif, focus des champs, slider, progression, checkbox cochée), magenta `#FF00FF` (actions danger : Annuler/Refuser), vert terminal `#00FF7F` sur noir `#000000` pour le journal et le QR. Rayon unique 10px, halo discret `rgba(255,255,255,0.1)` sur les cartes, hover `scale(1.05)` en `0.2s ease` (seul effet de mouvement autorisé : le curseur `█` du header est désormais statique, en cyan). Typographie : HelpMe (display, titres), sans-serif système (corps), `monospace` (données : code, adresse, commande, journal, footer). Couche cachée base64 conservée telle quelle en pied de fenêtre, jamais expliquée. QR généré sur fond noir. Structure en cartes sectionnées (CONNEXION / DOSSIER / OPTIONS / TRANSFERT ENTRANT / JOURNAL) conservée de la v3. Aucun fond clair, pastel, bleu corporate ni dégradé. Logique fonctionnelle inchangée.
+
 ## [0.8.0] - 2026-11-11
 
 ### Modifié

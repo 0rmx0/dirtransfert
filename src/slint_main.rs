@@ -159,9 +159,9 @@ fn qr_image(payload: &str) -> Option<(Vec<slint::Rgba8Pixel>, u32)> {
     let scale: usize = 4;
     let dim = w * scale;
     let light = slint::Rgba8Pixel {
-        r: 17,
-        g: 17,
-        b: 17,
+        r: 0,
+        g: 0,
+        b: 0,
         a: 255,
     };
     let dark = slint::Rgba8Pixel {
